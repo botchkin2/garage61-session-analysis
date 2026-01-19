@@ -1,2 +1,3 @@
 // Export utility functions from here
-// Example: export {formatDate} from './dateUtils';
+export { apiClient } from './api';
+export { AuthProvider, useAuth } from './authContext';
