@@ -200,25 +200,33 @@ const LapList: React.FC = () => {
 
   if (loading) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color={RacingTheme.colors.primary} />
-        <Text style={styles.loadingText}>LOADING TELEMETRY DATA...</Text>
+      <View style={styles.mainContainer}>
+        <View style={styles.fullHeightContainer}>
+          <View style={styles.centerContainer}>
+            <ActivityIndicator size="large" color={RacingTheme.colors.primary} />
+            <Text style={styles.loadingText}>LOADING TELEMETRY DATA...</Text>
+          </View>
+        </View>
       </View>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.centerContainer}>
-        <Text style={styles.errorText}>TELEMETRY ERROR</Text>
-        <Text style={styles.errorText}>
-          {error}
-        </Text>
-        <RacingButton
-          title="RETRY CONNECTION"
-          onPress={() => loadLaps()}
-          style={styles.refreshButton}
-        />
+      <View style={styles.mainContainer}>
+        <View style={styles.fullHeightContainer}>
+          <View style={styles.centerContainer}>
+            <Text style={styles.errorText}>TELEMETRY ERROR</Text>
+            <Text style={styles.errorText}>
+              {error}
+            </Text>
+            <RacingButton
+              title="RETRY CONNECTION"
+              onPress={() => loadLaps()}
+              style={styles.refreshButton}
+            />
+          </View>
+        </View>
       </View>
     );
   }
@@ -401,6 +409,10 @@ const styles = StyleSheet.create({
   mainContainer: {
     flex: 1,
     backgroundColor: RacingTheme.colors.background,
+  },
+  fullHeightContainer: {
+    flex: 1,
+    minHeight: '100vh' as any,
   },
   scrollView: {
     flex: 1,

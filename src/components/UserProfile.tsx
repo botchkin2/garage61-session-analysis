@@ -21,36 +21,48 @@ const UserProfile: React.FC = () => {
 
   if (isLoading) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color={RacingTheme.colors.primary} />
-        <Text style={styles.loadingText}>INITIALIZING DRIVER PROFILE...</Text>
+      <View style={styles.mainContainer}>
+        <View style={styles.fullHeightContainer}>
+          <View style={styles.centerContainer}>
+            <ActivityIndicator size="large" color={RacingTheme.colors.primary} />
+            <Text style={styles.loadingText}>INITIALIZING DRIVER PROFILE...</Text>
+          </View>
+        </View>
       </View>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.centerContainer}>
-        <Text style={styles.errorText}>CONNECTION FAILED</Text>
-        <Text style={styles.errorSubtext}>
-          {error}
-        </Text>
-        <RacingButton
-          title="RETRY CONNECTION"
-          onPress={() => window.location.reload()}
-          style={styles.retryButton}
-        />
+      <View style={styles.mainContainer}>
+        <View style={styles.fullHeightContainer}>
+          <View style={styles.centerContainer}>
+            <Text style={styles.errorText}>CONNECTION FAILED</Text>
+            <Text style={styles.errorSubtext}>
+              {error}
+            </Text>
+            <RacingButton
+              title="RETRY CONNECTION"
+              onPress={() => window.location.reload()}
+              style={styles.retryButton}
+            />
+          </View>
+        </View>
       </View>
     );
   }
 
   if (!isAuthenticated || !user) {
     return (
-      <View style={styles.centerContainer}>
-        <Text style={styles.errorText}>NOT AUTHENTICATED</Text>
-        <Text style={styles.errorSubtext}>
-          Please check your GARAGE61_API_TOKEN in .env.local
-        </Text>
+      <View style={styles.mainContainer}>
+        <View style={styles.fullHeightContainer}>
+          <View style={styles.centerContainer}>
+            <Text style={styles.errorText}>NOT AUTHENTICATED</Text>
+            <Text style={styles.errorSubtext}>
+              Please check your GARAGE61_API_TOKEN in .env.local
+            </Text>
+          </View>
+        </View>
       </View>
     );
   }
@@ -173,6 +185,10 @@ const styles = StyleSheet.create({
   mainContainer: {
     flex: 1,
     backgroundColor: RacingTheme.colors.background,
+  },
+  fullHeightContainer: {
+    flex: 1,
+    minHeight: '100vh' as any,
   },
   scrollView: {
     flex: 1,
