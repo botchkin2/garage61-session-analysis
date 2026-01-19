@@ -1,5 +1,5 @@
 import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
-import { Garage61User, ApiError } from '@/types';
+import { Garage61User, LapsResponse, ApiError } from '@/types';
 
 // Environment variables
 // In development, use webpack proxy to avoid CORS issues
@@ -24,7 +24,7 @@ class ApiClient {
         'Authorization': `Bearer ${API_TOKEN}`,
         'Content-Type': 'application/json',
       },
-      timeout: 10000, // 10 second timeout
+      timeout: 30000, // 30 second timeout
     });
 
     // Response interceptor for error handling
@@ -49,6 +49,45 @@ class ApiClient {
       const response: AxiosResponse<Garage61User> = await this.client.get('/me');
       return response.data;
     } catch (error) {
+      throw error;
+    }
+  }
+
+  // Get laps with filtering
+  async getLaps(params?: {
+    limit?: number;
+    offset?: number;
+    age?: number; // days
+    drivers?: string; // Must be comma-separated string for API
+    cars?: number[];
+    tracks?: number[];
+    sessionTypes?: number[];
+    minLapTime?: number;
+    maxLapTime?: number;
+    group?: 'driver' | 'driver-car' | 'none'; // API grouping option
+  }): Promise<LapsResponse> {
+    try {
+      const url = '/laps';
+      const fullUrl = `${API_BASE_URL}${url}`;
+      console.log('API Client: Making request to:', fullUrl);
+
+      // Convert array parameters to comma-separated strings for GET requests
+      const processedParams = {
+        ...params,
+        cars: params?.cars?.join(','),
+        tracks: params?.tracks?.join(','),
+        sessionTypes: params?.sessionTypes?.join(','),
+      };
+
+      const response: AxiosResponse<LapsResponse> = await this.client.get(url, {
+        params: {
+          limit: 100, // Default limit
+          ...processedParams
+        }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('API Client: Request failed:', error);
       throw error;
     }
   }

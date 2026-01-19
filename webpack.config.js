@@ -74,14 +74,13 @@ module.exports = {
     historyApiFallback: true,
     proxy: {
       '/api/garage61': {
-        target: 'https://garage61.net',
+        target: 'https://garage61.net/api/v1',
         changeOrigin: true,
-        pathRewrite: {
-          '^/api/garage61': '/api/v1',
+        pathRewrite: (path, req) => {
+          console.log('Proxying:', path, '->', path.replace('/api/garage61', ''));
+          return path.replace('/api/garage61', '');
         },
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-        },
+        logLevel: 'debug',
       },
     },
   },
