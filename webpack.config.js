@@ -1,5 +1,6 @@
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const Dotenv = require('dotenv-webpack');
 
 module.exports = {
   entry: './index.web.js',
@@ -57,6 +58,11 @@ module.exports = {
       template: './public/index.html',
       inject: true,
     }),
+    new Dotenv({
+      path: './.env.local',
+      safe: false,
+      systemvars: false,
+    }),
   ],
   devServer: {
     static: {
@@ -66,6 +72,18 @@ module.exports = {
     port: 3000,
     hot: true,
     historyApiFallback: true,
+    proxy: {
+      '/api/garage61': {
+        target: 'https://garage61.net',
+        changeOrigin: true,
+        pathRewrite: {
+          '^/api/garage61': '/api/v1',
+        },
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+        },
+      },
+    },
   },
   output: {
     path: path.resolve(__dirname, 'web-build'),
