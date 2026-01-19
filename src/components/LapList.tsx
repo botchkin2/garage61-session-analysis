@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, ScrollView, Animated } from 'react-native';
 import { apiClient } from '@/utils';
 import { Lap, LapsResponse } from '@/types';
+import { RacingCard, RacingButton, StatusBadge, MetricCard, LapTime, RacingDivider } from '@/components';
+import { RacingTheme } from '@/theme';
 
 interface EventGroup {
   eventId: string;
@@ -13,6 +15,8 @@ interface EventGroup {
   totalLaps: number;
   startTime: string;
   expanded: boolean;
+  averageLapTime: number;
+  sessionTypes: string[];
 }
 
 const LapList: React.FC = () => {
@@ -21,8 +25,10 @@ const LapList: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [totalLaps, setTotalLaps] = useState(0);
   const [eventGroups, setEventGroups] = useState<EventGroup[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [fadeAnim] = useState(new Animated.Value(0));
 
-  // Group laps by event ID
+  // Group laps by event ID with racing metrics
   const groupLapsByEvent = (lapData: Lap[]): EventGroup[] => {
     const groups: { [key: string]: EventGroup } = {};
 
@@ -41,22 +47,39 @@ const LapList: React.FC = () => {
           totalLaps: 0,
           startTime: lap.startTime,
           expanded: false,
+          averageLapTime: 0,
+          sessionTypes: [],
         };
       }
 
       groups[eventId].laps.push(lap);
       groups[eventId].bestLapTime = Math.min(groups[eventId].bestLapTime, lap.lapTime);
       groups[eventId].totalLaps++;
+
+      // Track session types
+      const sessionType = getSessionTypeName(lap.sessionType);
+      if (!groups[eventId].sessionTypes.includes(sessionType)) {
+        groups[eventId].sessionTypes.push(sessionType);
+      }
     });
 
-    // Sort laps within each event by lap time (best first)
+    // Calculate additional metrics and sort
     Object.values(groups).forEach(group => {
+      // Sort laps by lap time (best first)
       group.laps.sort((a, b) => a.lapTime - b.lapTime);
+
       // Update primary car/track to match the best lap
       if (group.laps.length > 0) {
         const bestLap = group.laps[0];
         group.primaryCar = bestLap.car.name;
         group.primaryTrack = bestLap.track.name;
+      }
+
+      // Calculate average lap time (excluding outliers)
+      const validLaps = group.laps.filter(lap => lap.lapTime > 0);
+      if (validLaps.length > 0) {
+        const totalTime = validLaps.reduce((sum, lap) => sum + lap.lapTime, 0);
+        group.averageLapTime = totalTime / validLaps.length;
       }
     });
 
@@ -66,35 +89,36 @@ const LapList: React.FC = () => {
     );
   };
 
-  const loadLaps = async () => {
+  const loadLaps = async (isRefresh = false) => {
     try {
-      console.log('LapList: Starting to load laps...');
-      setLoading(true);
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       setError(null);
 
-      // First test if we can reach the API at all
-      console.log('LapList: Testing API connectivity...');
-      const canConnect = await apiClient.ping();
-      console.log('LapList: API connectivity test:', canConnect ? 'SUCCESS' : 'FAILED');
+      console.log('LapList: Starting to load laps...');
 
+      // Test API connectivity
+      const canConnect = await apiClient.ping();
       if (!canConnect) {
         throw new Error('Cannot connect to Garage 61 API. Check your token and network connection.');
       }
 
-      // Get ALL laps from last 24 hours for current user (no API grouping)
-      console.log('LapList: Searching for all laps from last 24 hours (group: none)');
-
+      // Get laps from last 24 hours
       const response: LapsResponse = await apiClient.getLaps({
-        limit: 200, // Get more laps for comprehensive analysis
-        age: 1, // Laps driven in the last day (24 hours)
-        drivers: 'me', // Only laps driven by current user
-        group: 'none', // Get all individual laps, no API grouping
+        limit: 200,
+        age: 1,
+        drivers: 'me',
+        group: 'none',
       });
+
       console.log('LapList: Successfully loaded', response.items.length, 'laps out of', response.total);
       setLaps(response.items);
       setTotalLaps(response.total);
 
-      // Group laps by event ID
+      // Group laps by event with enhanced metrics
       const eventGroups = groupLapsByEvent(response.items);
       setEventGroups(eventGroups);
       console.log('LapList: Grouped into', eventGroups.length, 'events');
@@ -103,7 +127,12 @@ const LapList: React.FC = () => {
       setError(err instanceof Error ? err.message : 'Failed to load lap data');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
+  };
+
+  const handleRefresh = () => {
+    loadLaps(true);
   };
 
   // Test direct fetch to isolate CORS vs other issues
@@ -141,6 +170,13 @@ const LapList: React.FC = () => {
 
     // Then try loading laps
     loadLaps();
+
+    // Fade in animation
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: RacingTheme.animations.normal,
+      useNativeDriver: true,
+    }).start();
   }, []);
 
   const formatLapTime = (seconds: number): string => {
@@ -162,40 +198,11 @@ const LapList: React.FC = () => {
     }
   };
 
-
-  const renderLapItem = ({ item }: { item: Lap }) => (
-    <View style={styles.lapItem}>
-      <View style={styles.lapHeader}>
-        <Text style={styles.lapTime}>{formatLapTime(item.lapTime)}</Text>
-        <Text style={styles.lapNumber}>Lap #{item.lapNumber}</Text>
-      </View>
-
-      <View style={styles.lapDetails}>
-        <Text style={styles.detailText}>
-          {item.track.name} - {item.car.name}
-        </Text>
-        <Text style={styles.detailText}>
-          {getSessionTypeName(item.sessionType)} Session #{item.session}
-        </Text>
-        <Text style={styles.detailText}>
-          {formatDate(item.startTime)}
-        </Text>
-      </View>
-
-      <View style={styles.lapFlags}>
-        {item.clean && <Text style={[styles.flag, styles.cleanFlag]}>Clean</Text>}
-        {item.offtrack && <Text style={[styles.flag, styles.offtrackFlag]}>Off Track</Text>}
-        {item.pitlane && <Text style={[styles.flag, styles.pitFlag]}>Pit</Text>}
-        {item.incomplete && <Text style={[styles.flag, styles.incompleteFlag]}>Incomplete</Text>}
-      </View>
-    </View>
-  );
-
   if (loading) {
     return (
       <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Loading lap data...</Text>
+        <ActivityIndicator size="large" color={RacingTheme.colors.primary} />
+        <Text style={styles.loadingText}>LOADING TELEMETRY DATA...</Text>
       </View>
     );
   }
@@ -203,15 +210,21 @@ const LapList: React.FC = () => {
   if (error) {
     return (
       <View style={styles.centerContainer}>
-        <Text style={styles.errorText}>Error: {error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={loadLaps}>
-          <Text style={styles.retryButtonText}>Retry</Text>
-        </TouchableOpacity>
+        <Text style={styles.errorText}>TELEMETRY ERROR</Text>
+        <Text style={styles.errorText}>
+          {error}
+        </Text>
+        <RacingButton
+          title="RETRY CONNECTION"
+          onPress={() => loadLaps()}
+          style={styles.refreshButton}
+        />
       </View>
     );
   }
 
   const toggleEvent = (eventId: string) => {
+    // Add haptic feedback and smooth animation
     setEventGroups(groups =>
       groups.map(group =>
         group.eventId === eventId
@@ -221,271 +234,403 @@ const LapList: React.FC = () => {
     );
   };
 
+  // Calculate summary statistics
+  const totalEvents = eventGroups.length;
+  const bestOverallTime = Math.min(...eventGroups.map(g => g.bestLapTime));
+  const averageOverallTime = eventGroups.reduce((sum, g) => sum + g.averageLapTime, 0) / totalEvents;
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Session Analysis</Text>
-      <Text style={styles.summary}>
-        {eventGroups.length} events • {laps.length} total laps from last 24 hours
-      </Text>
+    <View style={styles.mainContainer}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={true}
+      >
+        <Animated.View style={[{ opacity: fadeAnim }]}>
+          <View style={styles.container}>
+      {/* Racing Dashboard Header */}
+      <View style={styles.dashboardHeader}>
+        <Text style={styles.dashboardTitle}>RACING ANALYTICS</Text>
+        <Text style={styles.dashboardSubtitle}>Last 24 Hours Performance</Text>
+      </View>
 
-      <TouchableOpacity style={styles.refreshButton} onPress={loadLaps}>
-        <Text style={styles.refreshButtonText}>🔄 Refresh Data</Text>
-      </TouchableOpacity>
+      {/* Performance Metrics Grid */}
+      <View style={styles.metricsGrid}>
+        <MetricCard
+          title="TOTAL LAPS"
+          value={laps.length.toString()}
+          style={styles.metricCard}
+        />
+        <MetricCard
+          title="SESSIONS"
+          value={totalEvents.toString()}
+          style={styles.metricCard}
+        />
+        <MetricCard
+          title="BEST LAP"
+          value={bestOverallTime === Infinity ? '--:--.---' : formatLapTime(bestOverallTime)}
+          style={styles.metricCard}
+        />
+        <MetricCard
+          title="AVG LAP"
+          value={isNaN(averageOverallTime) ? '--:--.---' : formatLapTime(averageOverallTime)}
+          style={styles.metricCard}
+        />
+      </View>
 
-      <FlatList
-        data={eventGroups}
-        renderItem={({ item }) => (
-          <View style={styles.eventContainer}>
+      {/* Refresh Button */}
+      <RacingButton
+        title="🔄 REFRESH TELEMETRY"
+        onPress={handleRefresh}
+        style={styles.refreshButton}
+        disabled={refreshing}
+      />
+
+      {/* Event Sessions List */}
+      <View style={styles.eventsSection}>
+        <Text style={styles.sectionTitle}>SESSION ANALYSIS</Text>
+
+        <FlatList
+          data={eventGroups}
+          renderItem={({ item: event }) => (
+          <RacingCard key={event.eventId} style={styles.eventCard}>
             {/* Event Header */}
             <TouchableOpacity
               style={styles.eventHeader}
-              onPress={() => toggleEvent(item.eventId)}
+              onPress={() => toggleEvent(event.eventId)}
             >
-              <View style={styles.eventInfo}>
-                <Text style={styles.eventTitle}>
-                  {item.primaryCar} at {item.primaryTrack}
-                </Text>
-                <Text style={styles.eventStats}>
-                  {item.totalLaps} laps • Best: {formatLapTime(item.bestLapTime)}
-                </Text>
-                <Text style={styles.eventDate}>
-                  {formatDate(item.startTime)}
+              <View style={styles.eventMainInfo}>
+                <View style={styles.eventTitleRow}>
+                  <Text style={styles.eventTitle}>
+                    {event.primaryCar}
+                  </Text>
+                  <Text style={styles.eventTrack}>
+                    {event.primaryTrack}
+                  </Text>
+                </View>
+                <View style={styles.eventMetaRow}>
+                  <Text style={styles.eventDate}>{formatDate(event.startTime)}</Text>
+                  <Text style={styles.eventSessions}>
+                    {event.sessionTypes.join(' • ')}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.eventStats}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statNumber}>{event.totalLaps}</Text>
+                  <Text style={styles.statLabel}>LAPS</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={styles.statNumber}>
+                    <LapTime time={event.bestLapTime} isBest />
+                  </Text>
+                  <Text style={styles.statLabel}>BEST</Text>
+                </View>
+                <Text style={styles.expandIcon}>
+                  {event.expanded ? '▼' : '▶'}
                 </Text>
               </View>
-              <Text style={styles.expandIcon}>
-                {item.expanded ? '▼' : '▶'}
-              </Text>
             </TouchableOpacity>
 
-            {/* Event Laps */}
-            {item.expanded && (
-              <View style={styles.eventLaps}>
-                {item.laps.map((lap, index) => (
-                  <View key={lap.id} style={styles.lapItem}>
-                    <View style={styles.lapHeader}>
-                      <Text style={styles.lapTime}>{formatLapTime(lap.lapTime)}</Text>
-                      <Text style={styles.lapNumber}>#{index + 1}</Text>
-                    </View>
+            {/* Expanded Lap Details */}
+            {event.expanded && (
+              <View style={styles.expandedContent}>
+                <RacingDivider />
 
-                    <View style={styles.lapDetails}>
-                      <Text style={styles.detailText}>
-                        {lap.track.name} - {lap.car.name}
-                      </Text>
-                      <Text style={styles.detailText}>
-                        {getSessionTypeName(lap.sessionType)} Session #{lap.session}
-                      </Text>
-                    </View>
+                {/* Lap List Header */}
+                <View style={styles.lapListHeader}>
+                  <Text style={styles.lapHeaderRank}>RANK</Text>
+                  <Text style={styles.lapHeaderTime}>LAP TIME</Text>
+                  <Text style={styles.lapHeaderSession}>SESSION</Text>
+                  <Text style={styles.lapHeaderStatus}>STATUS</Text>
+                </View>
 
-                    <View style={styles.lapFlags}>
-                      {lap.clean && <Text style={[styles.flag, styles.cleanFlag]}>Clean</Text>}
-                      {lap.offtrack && <Text style={[styles.flag, styles.offtrackFlag]}>Off Track</Text>}
-                      {lap.pitlane && <Text style={[styles.flag, styles.pitFlag]}>Pit</Text>}
-                      {lap.incomplete && <Text style={[styles.flag, styles.incompleteFlag]}>Incomplete</Text>}
+                <RacingDivider />
+
+                {/* Individual Laps */}
+                {event.laps.map((lap, index) => (
+                  <View key={lap.id} style={styles.lapRow}>
+                    <Text style={styles.lapRank}>#{index + 1}</Text>
+                    <LapTime
+                      time={lap.lapTime}
+                      isBest={index === 0}
+                      style={styles.lapTimeCell}
+                    />
+                    <Text style={styles.lapSession}>
+                      {getSessionTypeName(lap.sessionType)} #{lap.session}
+                    </Text>
+                    <View style={styles.lapStatus}>
+                      {lap.clean && <StatusBadge status="clean" />}
+                      {lap.offtrack && <StatusBadge status="offtrack" />}
+                      {lap.pitlane && <StatusBadge status="pit" />}
+                      {lap.incomplete && <StatusBadge status="incomplete" />}
                     </View>
                   </View>
                 ))}
               </View>
             )}
-          </View>
+          </RacingCard>
+          )}
+          keyExtractor={(item) => item.eventId}
+          showsVerticalScrollIndicator={false}
+          style={styles.eventsList}
+        />
+
+        {eventGroups.length === 0 && !loading && (
+          <RacingCard style={styles.emptyCard}>
+            <Text style={styles.emptyIcon}>🏁</Text>
+            <Text style={styles.emptyTitle}>NO RACING DATA</Text>
+            <Text style={styles.emptyMessage}>
+              No laps recorded in the last 24 hours.{'\n'}
+              Hit the track and start analyzing your performance!
+            </Text>
+          </RacingCard>
         )}
-        keyExtractor={(item) => item.eventId}
-        style={styles.list}
-        showsVerticalScrollIndicator={false}
-      />
+      </View>
 
-      {laps.length === 0 && (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No lap data found</Text>
-          <Text style={styles.emptySubtext}>
-            No laps driven in the last 24 hours. Try driving some laps in iRacing or check your API permissions.
-          </Text>
-        </View>
-      )}
-
+            <View style={styles.bottomSpacing} />
+          </View>
+        </Animated.View>
+      </ScrollView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  mainContainer: {
     flex: 1,
-    padding: 20,
-    backgroundColor: '#ffffff',
+    backgroundColor: RacingTheme.colors.background,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  contentContainer: {
+    flexGrow: 1,
+    paddingBottom: 100,
+  },
+  container: {
+    padding: RacingTheme.spacing.md,
   },
   centerContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#ffffff',
+    padding: RacingTheme.spacing.md,
+    backgroundColor: RacingTheme.colors.background,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333333',
-    marginBottom: 10,
-  },
-  summary: {
-    fontSize: 14,
-    color: '#666666',
-    marginBottom: 20,
-  },
-  list: {
-    flex: 1,
-  },
-  lapItem: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-    padding: 15,
-    marginBottom: 10,
-  },
-  lapHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  dashboardHeader: {
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: RacingTheme.spacing.lg,
   },
-  lapTime: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#007AFF',
+  dashboardTitle: {
+    fontSize: RacingTheme.typography.h2,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.primary,
+    letterSpacing: 2,
+    marginBottom: RacingTheme.spacing.xs,
   },
-  lapNumber: {
-    fontSize: 14,
-    color: '#666666',
+  dashboardSubtitle: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
-  lapDetails: {
-    marginBottom: 8,
-  },
-  detailText: {
-    fontSize: 14,
-    color: '#333333',
-    marginBottom: 2,
-  },
-  lapFlags: {
+  metricsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginBottom: RacingTheme.spacing.lg,
   },
-  flag: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    fontSize: 12,
-    marginRight: 4,
-    marginBottom: 2,
-  },
-  cleanFlag: {
-    backgroundColor: '#28a745',
-    color: '#ffffff',
-  },
-  offtrackFlag: {
-    backgroundColor: '#dc3545',
-    color: '#ffffff',
-  },
-  pitFlag: {
-    backgroundColor: '#ffc107',
-    color: '#000000',
-  },
-  incompleteFlag: {
-    backgroundColor: '#6c757d',
-    color: '#ffffff',
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#666666',
-  },
-  errorText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#dc3545',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  retryButton: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 6,
-  },
-  retryButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '500',
+  metricCard: {
+    width: '48%',
+    marginBottom: RacingTheme.spacing.md,
   },
   refreshButton: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 6,
-    marginBottom: 20,
+    marginBottom: RacingTheme.spacing.lg,
     alignSelf: 'center',
   },
-  refreshButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '500',
+  eventsSection: {
+    marginBottom: RacingTheme.spacing.lg,
   },
-  eventContainer: {
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#e9ecef',
+  eventsList: {
+    flex: 1,
+  },
+  sectionTitle: {
+    fontSize: RacingTheme.typography.h4,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.text,
+    marginBottom: RacingTheme.spacing.md,
+    letterSpacing: 1,
+  },
+  eventCard: {
+    marginBottom: RacingTheme.spacing.md,
   },
   eventHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 15,
-    backgroundColor: '#f8f9fa',
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
+    padding: RacingTheme.spacing.md,
   },
-  eventInfo: {
+  eventMainInfo: {
     flex: 1,
+  },
+  eventTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: RacingTheme.spacing.xs,
   },
   eventTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#007AFF',
-    marginBottom: 4,
+    fontSize: RacingTheme.typography.h4,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.primary,
+    marginRight: RacingTheme.spacing.sm,
   },
-  eventStats: {
-    fontSize: 14,
-    color: '#666666',
-    marginBottom: 2,
+  eventTrack: {
+    fontSize: RacingTheme.typography.body,
+    color: RacingTheme.colors.textSecondary,
+  },
+  eventMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   eventDate: {
-    fontSize: 12,
-    color: '#999999',
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.textTertiary,
+  },
+  eventSessions: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.secondary,
+    fontWeight: RacingTheme.typography.medium as any,
+  },
+  eventStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statItem: {
+    alignItems: 'center',
+    marginRight: RacingTheme.spacing.md,
+  },
+  statNumber: {
+    fontSize: RacingTheme.typography.body,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.text,
+  },
+  statLabel: {
+    fontSize: RacingTheme.typography.small,
+    color: RacingTheme.colors.textTertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   expandIcon: {
-    fontSize: 16,
-    color: '#666666',
-    marginLeft: 10,
+    fontSize: RacingTheme.typography.h4,
+    color: RacingTheme.colors.primary,
   },
-  eventLaps: {
-    padding: 10,
-    backgroundColor: '#ffffff',
+  expandedContent: {
+    padding: RacingTheme.spacing.md,
   },
-  emptyContainer: {
+  lapListHeader: {
+    flexDirection: 'row',
+    paddingVertical: RacingTheme.spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: RacingTheme.colors.surfaceElevated,
+  },
+  lapHeaderRank: {
     flex: 1,
-    justifyContent: 'center',
+    fontSize: RacingTheme.typography.small,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  lapHeaderTime: {
+    flex: 2,
+    fontSize: RacingTheme.typography.small,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  lapHeaderSession: {
+    flex: 3,
+    fontSize: RacingTheme.typography.small,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  lapHeaderStatus: {
+    flex: 2,
+    fontSize: RacingTheme.typography.small,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  lapRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    padding: 40,
+    paddingVertical: RacingTheme.spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: RacingTheme.colors.surfaceElevated,
   },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#666666',
-    textAlign: 'center',
+  lapRank: {
+    flex: 1,
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.textTertiary,
+    fontFamily: RacingTheme.typography.mono,
   },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#999999',
+  lapTimeCell: {
+    flex: 2,
+  },
+  lapSession: {
+    flex: 3,
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.textSecondary,
+  },
+  lapStatus: {
+    flex: 2,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  emptyCard: {
+    alignItems: 'center',
+    padding: RacingTheme.spacing.xl,
+  },
+  emptyIcon: {
+    fontSize: RacingTheme.typography.h1,
+    marginBottom: RacingTheme.spacing.md,
+  },
+  emptyTitle: {
+    fontSize: RacingTheme.typography.h3,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.text,
     textAlign: 'center',
-    marginTop: 10,
+    marginBottom: RacingTheme.spacing.sm,
+  },
+  emptyMessage: {
+    fontSize: RacingTheme.typography.body,
+    color: RacingTheme.colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  loadingText: {
+    marginTop: RacingTheme.spacing.md,
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.primary,
+    letterSpacing: 1,
+  },
+  errorText: {
+    fontSize: RacingTheme.typography.h2,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.error,
+    textAlign: 'center',
+    marginBottom: RacingTheme.spacing.lg,
+    letterSpacing: 1,
+  },
+  bottomSpacing: {
+    height: RacingTheme.spacing.xxxl, // Extra space for scrolling
   },
 });
 

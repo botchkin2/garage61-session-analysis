@@ -1,16 +1,29 @@
-import React from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Animated } from 'react-native';
 import { useAuth } from '@/utils';
 import { Garage61User } from '@/types';
+import { RacingCard, RacingButton, RacingDivider, StatusBadge } from '@/components';
+import { RacingTheme } from '@/theme';
 
 const UserProfile: React.FC = () => {
   const { user, isLoading, error, isAuthenticated } = useAuth();
+  const [fadeAnim] = useState(new Animated.Value(0));
+
+  useEffect(() => {
+    if (!isLoading && !error && isAuthenticated && user) {
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: RacingTheme.animations.normal,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [isLoading, error, isAuthenticated, user]);
 
   if (isLoading) {
     return (
       <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Loading user data...</Text>
+        <ActivityIndicator size="large" color={RacingTheme.colors.primary} />
+        <Text style={styles.loadingText}>INITIALIZING DRIVER PROFILE...</Text>
       </View>
     );
   }
@@ -18,10 +31,15 @@ const UserProfile: React.FC = () => {
   if (error) {
     return (
       <View style={styles.centerContainer}>
-        <Text style={styles.errorText}>Error: {error}</Text>
+        <Text style={styles.errorText}>CONNECTION FAILED</Text>
         <Text style={styles.errorSubtext}>
-          Please check your API token and network connection.
+          {error}
         </Text>
+        <RacingButton
+          title="RETRY CONNECTION"
+          onPress={() => window.location.reload()}
+          style={styles.retryButton}
+        />
       </View>
     );
   }
@@ -29,7 +47,7 @@ const UserProfile: React.FC = () => {
   if (!isAuthenticated || !user) {
     return (
       <View style={styles.centerContainer}>
-        <Text style={styles.errorText}>Not authenticated</Text>
+        <Text style={styles.errorText}>NOT AUTHENTICATED</Text>
         <Text style={styles.errorSubtext}>
           Please check your GARAGE61_API_TOKEN in .env.local
         </Text>
@@ -38,173 +56,338 @@ const UserProfile: React.FC = () => {
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Garage 61 User Profile</Text>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Basic Information</Text>
-        <InfoRow label="Name" value={`${user.firstName} ${user.lastName}`} />
-        <InfoRow label="Nickname" value={user.nickName} />
-        <InfoRow label="User ID" value={user.id} />
-        <InfoRow label="Slug" value={user.slug} />
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Subscription</Text>
-        <InfoRow label="Plan" value={user.subscriptionPlan} />
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>API Permissions</Text>
-        <View style={styles.permissionsContainer}>
-          {user.apiPermissions.map((permission, index) => (
-            <Text key={index} style={styles.permission}>
-              {permission}
+    <View style={styles.mainContainer}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={true}
+      >
+        <Animated.View style={[{ opacity: fadeAnim }]}>
+          <View style={styles.container}>
+      {/* Driver Header Card */}
+      <RacingCard style={styles.headerCard} glow>
+        <View style={styles.driverHeader}>
+          <View style={styles.driverAvatar}>
+            <Text style={styles.driverInitial}>
+              {user.firstName.charAt(0)}{user.lastName.charAt(0)}
             </Text>
-          ))}
+          </View>
+          <View style={styles.driverInfo}>
+            <Text style={styles.driverName}>
+              {user.firstName} {user.lastName}
+            </Text>
+            <Text style={styles.driverNickname}>"{user.nickName}"</Text>
+            <Text style={styles.driverId}>ID: {user.id}</Text>
+          </View>
         </View>
-      </View>
+      </RacingCard>
 
-      {user.teams && user.teams.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Teams ({user.teams.length})</Text>
-          {user.teams.map((team, index) => (
-            <View key={index} style={styles.teamItem}>
-              <Text style={styles.teamName}>{team.name}</Text>
-              <Text style={styles.teamRole}>{team.role}</Text>
+      {/* Subscription Status */}
+      <RacingCard style={styles.subscriptionCard}>
+        <View style={styles.cardHeader}>
+          <Text style={styles.cardIcon}>💳</Text>
+          <Text style={styles.cardTitle}>SUBSCRIPTION</Text>
+        </View>
+        <View style={styles.subscriptionContent}>
+          <Text style={styles.subscriptionPlan}>{user.subscriptionPlan}</Text>
+          <StatusBadge status="clean" style={styles.subscriptionBadge} />
+        </View>
+      </RacingCard>
+
+      {/* API Permissions */}
+      <RacingCard style={styles.permissionsCard}>
+        <View style={styles.cardHeader}>
+          <Text style={styles.cardIcon}>🔑</Text>
+          <Text style={styles.cardTitle}>API ACCESS</Text>
+        </View>
+        <View style={styles.permissionsGrid}>
+          {user.apiPermissions.map((permission, index) => (
+            <View key={index} style={styles.permissionChip}>
+              <Text style={styles.permissionText}>{permission}</Text>
             </View>
           ))}
         </View>
+      </RacingCard>
+
+      {/* Teams */}
+      {user.teams && user.teams.length > 0 && (
+        <RacingCard style={styles.teamsCard}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardIcon}>🏎️</Text>
+            <Text style={styles.cardTitle}>RACING TEAMS</Text>
+          </View>
+          {user.teams.map((team, index) => (
+            <View key={index} style={styles.teamRow}>
+              <View style={styles.teamInfo}>
+                <Text style={styles.teamName}>{team.name}</Text>
+                <Text style={styles.teamRole}>{team.role}</Text>
+              </View>
+              <StatusBadge status="best" style={styles.teamBadge} />
+            </View>
+          ))}
+        </RacingCard>
       )}
 
+      {/* Data Packs */}
       {user.subscribedDataPacks && user.subscribedDataPacks.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Subscribed Data Packs</Text>
-          <Text style={styles.countText}>
-            {user.subscribedDataPacks.length} data pack(s)
+        <RacingCard style={styles.dataPacksCard}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardIcon}>📊</Text>
+            <Text style={styles.cardTitle}>DATA PACKS</Text>
+          </View>
+          <Text style={styles.dataPackCount}>
+            {user.subscribedDataPacks.length} ACTIVE DATA PACK{user.subscribedDataPacks.length !== 1 ? 'S' : ''}
           </Text>
-        </View>
+          <StatusBadge status="clean" style={styles.dataPackBadge} />
+        </RacingCard>
       )}
+
+      {/* Driver Stats Footer */}
+      <RacingCard style={styles.statsCard}>
+        <Text style={styles.statsTitle}>DRIVER STATUS</Text>
+        <View style={styles.statsGrid}>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>ONLINE</Text>
+            <Text style={styles.statLabel}>Status</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{user.slug}</Text>
+            <Text style={styles.statLabel}>Handle</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>READY</Text>
+            <Text style={styles.statLabel}>System</Text>
+          </View>
+        </View>
+      </RacingCard>
+
+            <View style={styles.bottomSpacing} />
+          </View>
+        </Animated.View>
+      </ScrollView>
     </View>
   );
 };
 
-interface InfoRowProps {
-  label: string;
-  value: string;
-}
-
-const InfoRow: React.FC<InfoRowProps> = ({ label, value }) => (
-  <View style={styles.infoRow}>
-    <Text style={styles.label}>{label}:</Text>
-    <Text style={styles.value}>{value}</Text>
-  </View>
-);
-
 const styles = StyleSheet.create({
-  container: {
+  mainContainer: {
     flex: 1,
-    padding: 20,
-    backgroundColor: '#ffffff',
+    backgroundColor: RacingTheme.colors.background,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  contentContainer: {
+    flexGrow: 1,
+    paddingBottom: 100,
+  },
+  container: {
+    padding: RacingTheme.spacing.md,
   },
   centerContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#ffffff',
+    padding: RacingTheme.spacing.md,
+    backgroundColor: RacingTheme.colors.background,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333333',
-    marginBottom: 20,
-    textAlign: 'center',
+  headerCard: {
+    marginBottom: RacingTheme.spacing.lg,
+    padding: RacingTheme.spacing.lg,
   },
-  section: {
-    marginBottom: 20,
-    padding: 15,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
+  driverHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333333',
-    marginBottom: 10,
+  driverAvatar: {
+    width: 80,
+    height: 80,
+    borderRadius: RacingTheme.borderRadius.full,
+    backgroundColor: RacingTheme.colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: RacingTheme.spacing.lg,
+    ...RacingTheme.shadows.glow,
   },
-  infoRow: {
+  driverInitial: {
+    fontSize: RacingTheme.typography.h1,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.background,
+    fontFamily: RacingTheme.typography.mono,
+  },
+  driverInfo: {
+    flex: 1,
+  },
+  driverName: {
+    fontSize: RacingTheme.typography.h3,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.text,
+    marginBottom: RacingTheme.spacing.xs,
+  },
+  driverNickname: {
+    fontSize: RacingTheme.typography.body,
+    color: RacingTheme.colors.primary,
+    fontStyle: 'italic',
+    marginBottom: RacingTheme.spacing.xs,
+  },
+  driverId: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.textTertiary,
+    fontFamily: RacingTheme.typography.mono,
+  },
+  subscriptionCard: {
+    marginBottom: RacingTheme.spacing.md,
+  },
+  permissionsCard: {
+    marginBottom: RacingTheme.spacing.md,
+  },
+  teamsCard: {
+    marginBottom: RacingTheme.spacing.md,
+  },
+  dataPacksCard: {
+    marginBottom: RacingTheme.spacing.md,
+  },
+  statsCard: {
+    marginBottom: RacingTheme.spacing.md,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: RacingTheme.spacing.md,
+  },
+  cardIcon: {
+    fontSize: RacingTheme.typography.h4,
+    marginRight: RacingTheme.spacing.sm,
+  },
+  cardTitle: {
+    fontSize: RacingTheme.typography.h4,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.primary,
+    letterSpacing: 1,
+  },
+  subscriptionContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 5,
   },
-  label: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#666666',
-    flex: 1,
+  subscriptionPlan: {
+    fontSize: RacingTheme.typography.h3,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.secondary,
   },
-  value: {
-    fontSize: 14,
-    color: '#333333',
-    flex: 2,
-    textAlign: 'right',
+  subscriptionBadge: {
+    marginLeft: RacingTheme.spacing.sm,
   },
-  permissionsContainer: {
+  permissionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
   },
-  permission: {
-    backgroundColor: '#007AFF',
-    color: '#ffffff',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-    margin: 2,
-    fontSize: 12,
+  permissionChip: {
+    backgroundColor: RacingTheme.colors.surfaceElevated,
+    paddingHorizontal: RacingTheme.spacing.sm,
+    paddingVertical: RacingTheme.spacing.xs,
+    borderRadius: RacingTheme.borderRadius.sm,
+    margin: RacingTheme.spacing.xs,
+    borderWidth: 1,
+    borderColor: RacingTheme.colors.primary,
   },
-  teamItem: {
+  permissionText: {
+    fontSize: RacingTheme.typography.small,
+    color: RacingTheme.colors.primary,
+    fontWeight: RacingTheme.typography.medium as any,
+    fontFamily: RacingTheme.typography.mono,
+  },
+  teamRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 5,
+    paddingVertical: RacingTheme.spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: RacingTheme.colors.surfaceElevated,
   },
-  teamName: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#333333',
+  teamInfo: {
     flex: 1,
   },
-  teamRole: {
-    fontSize: 12,
-    color: '#666666',
-    backgroundColor: '#e9ecef',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+  teamName: {
+    fontSize: RacingTheme.typography.body,
+    fontWeight: RacingTheme.typography.medium as any,
+    color: RacingTheme.colors.text,
+    marginBottom: RacingTheme.spacing.xs,
   },
-  countText: {
-    fontSize: 14,
-    color: '#666666',
-    fontStyle: 'italic',
+  teamRole: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.textSecondary,
+    backgroundColor: RacingTheme.colors.surfaceElevated,
+    paddingHorizontal: RacingTheme.spacing.sm,
+    paddingVertical: RacingTheme.spacing.xs,
+    borderRadius: RacingTheme.borderRadius.sm,
+    alignSelf: 'flex-start',
+  },
+  teamBadge: {
+    marginLeft: RacingTheme.spacing.sm,
+  },
+  dataPackCount: {
+    fontSize: RacingTheme.typography.h3,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.primary,
+    marginBottom: RacingTheme.spacing.sm,
+  },
+  dataPackBadge: {
+    alignSelf: 'flex-start',
+  },
+  statsTitle: {
+    fontSize: RacingTheme.typography.h4,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.text,
+    textAlign: 'center',
+    marginBottom: RacingTheme.spacing.lg,
+    letterSpacing: 1,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  statItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  statValue: {
+    fontSize: RacingTheme.typography.body,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.secondary,
+    marginBottom: RacingTheme.spacing.xs,
+  },
+  statLabel: {
+    fontSize: RacingTheme.typography.small,
+    color: RacingTheme.colors.textTertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#666666',
+    marginTop: RacingTheme.spacing.md,
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.primary,
+    letterSpacing: 1,
   },
   errorText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#dc3545',
+    fontSize: RacingTheme.typography.h2,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.error,
     textAlign: 'center',
+    letterSpacing: 1,
+    marginBottom: RacingTheme.spacing.sm,
   },
   errorSubtext: {
-    fontSize: 14,
-    color: '#6c757d',
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.textSecondary,
     textAlign: 'center',
-    marginTop: 5,
+    marginBottom: RacingTheme.spacing.lg,
+  },
+  retryButton: {
+    marginTop: RacingTheme.spacing.md,
+  },
+  bottomSpacing: {
+    height: RacingTheme.spacing.xxxl,
   },
 });
 
