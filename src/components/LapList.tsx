@@ -3,12 +3,68 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator }
 import { apiClient } from '@/utils';
 import { Lap, LapsResponse } from '@/types';
 
+interface EventGroup {
+  eventId: string;
+  eventName?: string;
+  primaryCar: string;
+  primaryTrack: string;
+  laps: Lap[];
+  bestLapTime: number;
+  totalLaps: number;
+  startTime: string;
+  expanded: boolean;
+}
+
 const LapList: React.FC = () => {
   const [laps, setLaps] = useState<Lap[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [totalLaps, setTotalLaps] = useState(0);
-  const [viewMode, setViewMode] = useState<'individual' | 'grouped'>('grouped');
+  const [eventGroups, setEventGroups] = useState<EventGroup[]>([]);
+
+  // Group laps by event ID
+  const groupLapsByEvent = (lapData: Lap[]): EventGroup[] => {
+    const groups: { [key: string]: EventGroup } = {};
+
+    lapData.forEach(lap => {
+      const eventId = lap.event || 'No Event';
+      const eventName = lap.event || 'Unknown Event';
+
+      if (!groups[eventId]) {
+        groups[eventId] = {
+          eventId,
+          eventName,
+          primaryCar: lap.car.name,
+          primaryTrack: lap.track.name,
+          laps: [],
+          bestLapTime: Infinity,
+          totalLaps: 0,
+          startTime: lap.startTime,
+          expanded: false,
+        };
+      }
+
+      groups[eventId].laps.push(lap);
+      groups[eventId].bestLapTime = Math.min(groups[eventId].bestLapTime, lap.lapTime);
+      groups[eventId].totalLaps++;
+    });
+
+    // Sort laps within each event by lap time (best first)
+    Object.values(groups).forEach(group => {
+      group.laps.sort((a, b) => a.lapTime - b.lapTime);
+      // Update primary car/track to match the best lap
+      if (group.laps.length > 0) {
+        const bestLap = group.laps[0];
+        group.primaryCar = bestLap.car.name;
+        group.primaryTrack = bestLap.track.name;
+      }
+    });
+
+    // Sort events by most recent first
+    return Object.values(groups).sort((a, b) =>
+      new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+    );
+  };
 
   const loadLaps = async () => {
     try {
@@ -25,18 +81,23 @@ const LapList: React.FC = () => {
         throw new Error('Cannot connect to Garage 61 API. Check your token and network connection.');
       }
 
-      // Get laps from last 24 hours for current user, grouped by driver-car
-      console.log('LapList: Searching for laps from last 24 hours (age: 1) with driver-car grouping');
+      // Get ALL laps from last 24 hours for current user (no API grouping)
+      console.log('LapList: Searching for all laps from last 24 hours (group: none)');
 
       const response: LapsResponse = await apiClient.getLaps({
-        limit: 100, // Get more laps for better grouping
+        limit: 200, // Get more laps for comprehensive analysis
         age: 1, // Laps driven in the last day (24 hours)
         drivers: 'me', // Only laps driven by current user
-        group: 'driver-car', // Use API's built-in driver-car grouping
+        group: 'none', // Get all individual laps, no API grouping
       });
-      console.log('LapList: Successfully loaded', response.items.length, 'grouped laps out of', response.total);
+      console.log('LapList: Successfully loaded', response.items.length, 'laps out of', response.total);
       setLaps(response.items);
       setTotalLaps(response.total);
+
+      // Group laps by event ID
+      const eventGroups = groupLapsByEvent(response.items);
+      setEventGroups(eventGroups);
+      console.log('LapList: Grouped into', eventGroups.length, 'events');
     } catch (err) {
       console.error('LapList: Error loading laps:', err);
       setError(err instanceof Error ? err.message : 'Failed to load lap data');
@@ -101,37 +162,6 @@ const LapList: React.FC = () => {
     }
   };
 
-  const renderGroupedItem = ({ item }: { item: Lap }) => (
-    <View style={styles.groupItem}>
-      <View style={styles.groupHeader}>
-        <Text style={styles.groupTitle}>
-          {item.car.name} at {item.track.name}
-        </Text>
-        <Text style={styles.groupStats}>
-          Personal Best: {formatLapTime(item.lapTime)}
-        </Text>
-      </View>
-
-      <View style={styles.groupDetails}>
-        <Text style={styles.detailText}>
-          Driver: {item.driver?.nickName || item.driver?.firstName || 'Unknown'}
-        </Text>
-        <Text style={styles.detailText}>
-          {getSessionTypeName(item.sessionType)} Session #{item.session}
-        </Text>
-        <Text style={styles.detailText}>
-          {formatDate(item.startTime)}
-        </Text>
-      </View>
-
-      <View style={styles.lapFlags}>
-        {item.clean && <Text style={[styles.flag, styles.cleanFlag]}>Clean</Text>}
-        {item.offtrack && <Text style={[styles.flag, styles.offtrackFlag]}>Off Track</Text>}
-        {item.pitlane && <Text style={[styles.flag, styles.pitFlag]}>Pit</Text>}
-        {item.incomplete && <Text style={[styles.flag, styles.incompleteFlag]}>Incomplete</Text>}
-      </View>
-    </View>
-  );
 
   const renderLapItem = ({ item }: { item: Lap }) => (
     <View style={styles.lapItem}>
@@ -181,63 +211,93 @@ const LapList: React.FC = () => {
     );
   }
 
+  const toggleEvent = (eventId: string) => {
+    setEventGroups(groups =>
+      groups.map(group =>
+        group.eventId === eventId
+          ? { ...group, expanded: !group.expanded }
+          : group
+      )
+    );
+  };
+
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Recent Laps</Text>
+      <Text style={styles.title}>Session Analysis</Text>
       <Text style={styles.summary}>
-        {viewMode === 'grouped'
-          ? `Showing ${laps.length} personal best laps (API-grouped by driver-car)`
-          : `Showing ${laps.length} of ${totalLaps} total laps from last 24 hours`
-        }
+        {eventGroups.length} events • {laps.length} total laps from last 24 hours
       </Text>
 
-      {/* View Toggle */}
-      <View style={styles.viewToggle}>
-        <TouchableOpacity
-          style={[styles.toggleButton, viewMode === 'grouped' && styles.activeToggle]}
-          onPress={() => setViewMode('grouped')}
-        >
-          <Text style={[styles.toggleText, viewMode === 'grouped' && styles.activeToggleText]}>
-            Personal Bests
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.toggleButton, viewMode === 'individual' && styles.activeToggle]}
-          onPress={() => setViewMode('individual')}
-        >
-          <Text style={[styles.toggleText, viewMode === 'individual' && styles.activeToggleText]}>
-            Individual Laps
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <TouchableOpacity style={styles.testButton} onPress={loadLaps}>
-        <Text style={styles.testButtonText}>🔄 Refresh Laps</Text>
+      <TouchableOpacity style={styles.refreshButton} onPress={loadLaps}>
+        <Text style={styles.refreshButtonText}>🔄 Refresh Data</Text>
       </TouchableOpacity>
 
-      {viewMode === 'grouped' ? (
-        <FlatList
-          data={laps}
-          renderItem={renderGroupedItem}
-          keyExtractor={(item) => item.id}
-          style={styles.list}
-          showsVerticalScrollIndicator={false}
-        />
-      ) : (
-        <FlatList
-          data={laps}
-          renderItem={renderLapItem}
-          keyExtractor={(item) => item.id}
-          style={styles.list}
-          showsVerticalScrollIndicator={false}
-        />
-      )}
+      <FlatList
+        data={eventGroups}
+        renderItem={({ item }) => (
+          <View style={styles.eventContainer}>
+            {/* Event Header */}
+            <TouchableOpacity
+              style={styles.eventHeader}
+              onPress={() => toggleEvent(item.eventId)}
+            >
+              <View style={styles.eventInfo}>
+                <Text style={styles.eventTitle}>
+                  {item.primaryCar} at {item.primaryTrack}
+                </Text>
+                <Text style={styles.eventStats}>
+                  {item.totalLaps} laps • Best: {formatLapTime(item.bestLapTime)}
+                </Text>
+                <Text style={styles.eventDate}>
+                  {formatDate(item.startTime)}
+                </Text>
+              </View>
+              <Text style={styles.expandIcon}>
+                {item.expanded ? '▼' : '▶'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Event Laps */}
+            {item.expanded && (
+              <View style={styles.eventLaps}>
+                {item.laps.map((lap, index) => (
+                  <View key={lap.id} style={styles.lapItem}>
+                    <View style={styles.lapHeader}>
+                      <Text style={styles.lapTime}>{formatLapTime(lap.lapTime)}</Text>
+                      <Text style={styles.lapNumber}>#{index + 1}</Text>
+                    </View>
+
+                    <View style={styles.lapDetails}>
+                      <Text style={styles.detailText}>
+                        {lap.track.name} - {lap.car.name}
+                      </Text>
+                      <Text style={styles.detailText}>
+                        {getSessionTypeName(lap.sessionType)} Session #{lap.session}
+                      </Text>
+                    </View>
+
+                    <View style={styles.lapFlags}>
+                      {lap.clean && <Text style={[styles.flag, styles.cleanFlag]}>Clean</Text>}
+                      {lap.offtrack && <Text style={[styles.flag, styles.offtrackFlag]}>Off Track</Text>}
+                      {lap.pitlane && <Text style={[styles.flag, styles.pitFlag]}>Pit</Text>}
+                      {lap.incomplete && <Text style={[styles.flag, styles.incompleteFlag]}>Incomplete</Text>}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+        keyExtractor={(item) => item.eventId}
+        style={styles.list}
+        showsVerticalScrollIndicator={false}
+      />
 
       {laps.length === 0 && (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>No lap data found</Text>
           <Text style={styles.emptySubtext}>
-            No laps driven in the last 24 hours. Try adjusting the time range or check your API permissions.
+            No laps driven in the last 24 hours. Try driving some laps in iRacing or check your API permissions.
           </Text>
         </View>
       )}
@@ -353,7 +413,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
   },
-  testButton: {
+  refreshButton: {
     backgroundColor: '#007AFF',
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -361,78 +421,53 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     alignSelf: 'center',
   },
-  testButtonText: {
+  refreshButtonText: {
     color: '#ffffff',
     fontSize: 14,
     fontWeight: '500',
   },
-  viewToggle: {
+  eventContainer: {
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  eventHeader: {
     flexDirection: 'row',
-    backgroundColor: '#f0f0f0',
-    borderRadius: 8,
-    padding: 4,
-    marginBottom: 15,
-  },
-  toggleButton: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 6,
+    justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  activeToggle: {
-    backgroundColor: '#007AFF',
-  },
-  toggleText: {
-    fontSize: 14,
-    color: '#666666',
-    fontWeight: '500',
-  },
-  activeToggleText: {
-    color: '#ffffff',
-  },
-  groupItem: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
     padding: 15,
-    marginBottom: 10,
+    backgroundColor: '#f8f9fa',
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
   },
-  groupHeader: {
-    marginBottom: 10,
+  eventInfo: {
+    flex: 1,
   },
-  groupTitle: {
+  eventTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#007AFF',
     marginBottom: 4,
   },
-  groupStats: {
+  eventStats: {
     fontSize: 14,
     color: '#666666',
+    marginBottom: 2,
   },
-  groupDetails: {
-    marginBottom: 10,
-  },
-  recentLaps: {
-    borderTopWidth: 1,
-    borderTopColor: '#e9ecef',
-    paddingTop: 10,
-  },
-  recentLapsTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333333',
-    marginBottom: 5,
-  },
-  recentLapTime: {
-    fontSize: 14,
-    color: '#007AFF',
-    fontWeight: '500',
-  },
-  moreLaps: {
+  eventDate: {
     fontSize: 12,
+    color: '#999999',
+  },
+  expandIcon: {
+    fontSize: 16,
     color: '#666666',
-    fontStyle: 'italic',
+    marginLeft: 10,
+  },
+  eventLaps: {
+    padding: 10,
+    backgroundColor: '#ffffff',
   },
   emptyContainer: {
     flex: 1,

@@ -26,7 +26,7 @@ const App = (): React.JSX.Element => {
             onPress={() => setActiveTab('laps')}
           >
             <Text style={[styles.tabText, activeTab === 'laps' && styles.activeTabText]}>
-              Lap Data
+              Analysis
             </Text>
           </TouchableOpacity>
         </View>
