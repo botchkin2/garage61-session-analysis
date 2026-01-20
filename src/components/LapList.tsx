@@ -135,40 +135,8 @@ const LapList: React.FC = () => {
     loadLaps(true);
   };
 
-  // Test direct fetch to isolate CORS vs other issues
-  const testDirectFetch = async () => {
-    try {
-      console.log('Testing direct fetch to Garage 61 API...');
-      const token = process.env.GARAGE61_API_TOKEN;
-      if (!token) {
-        console.error('No API token found in environment');
-        return;
-      }
-
-      const response = await fetch('https://garage61.net/api/v1/me', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      console.log('Direct fetch status:', response.status);
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Direct fetch success:', data);
-      } else {
-        console.log('Direct fetch error:', await response.text());
-      }
-    } catch (error) {
-      console.error('Direct fetch failed:', error);
-    }
-  };
 
   useEffect(() => {
-    // Test direct fetch on component mount to isolate issues
-    testDirectFetch();
-
-    // Then try loading laps
     loadLaps();
 
     // Fade in animation
