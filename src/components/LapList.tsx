@@ -35,7 +35,11 @@ interface EventGroup {
   sessionTypes: string[];
 }
 
-const LapList: React.FC = () => {
+interface LapListProps {
+  onSessionAnalysis?: (sessionData: import('@/types').SessionData) => void;
+}
+
+const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
   const [laps, setLaps] = useState<Lap[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -244,6 +248,32 @@ const LapList: React.FC = () => {
     );
   };
 
+  const handleSessionAnalysis = (eventGroup: EventGroup) => {
+    if (!onSessionAnalysis) {
+      return;
+    }
+
+    // For this implementation, we'll analyze all laps in the event as one session
+    // Sort laps by lap time to get the best laps first
+    const sortedLaps = [...eventGroup.laps].sort(
+      (a, b) => a.lapTime - b.lapTime,
+    );
+    const bestLap = sortedLaps[0];
+
+    const sessionData = {
+      eventId: eventGroup.eventId,
+      eventName: eventGroup.eventName,
+      session: bestLap.session,
+      sessionType: bestLap.sessionType,
+      laps: eventGroup.laps, // Include all laps for analysis
+      track: bestLap.track,
+      car: bestLap.car,
+      startTime: eventGroup.startTime,
+    };
+
+    onSessionAnalysis(sessionData);
+  };
+
   // Calculate summary statistics
   const totalEvents = eventGroups.length;
   const bestOverallTime = Math.min(...eventGroups.map(g => g.bestLapTime));
@@ -350,6 +380,13 @@ const LapList: React.FC = () => {
                           </Text>
                           <Text style={styles.statLabel}>BEST</Text>
                         </View>
+                        {onSessionAnalysis && (
+                          <TouchableOpacity
+                            style={styles.analyzeButton}
+                            onPress={() => handleSessionAnalysis(event)}>
+                            <Text style={styles.analyzeIcon}>📊</Text>
+                          </TouchableOpacity>
+                        )}
                         <Text style={styles.expandIcon}>
                           {event.expanded ? '▼' : '▶'}
                         </Text>
@@ -558,6 +595,18 @@ const styles = StyleSheet.create({
   expandIcon: {
     fontSize: RacingTheme.typography.h4,
     color: RacingTheme.colors.primary,
+  },
+  analyzeButton: {
+    marginRight: RacingTheme.spacing.sm,
+    padding: RacingTheme.spacing.xs,
+    borderRadius: RacingTheme.borderRadius.sm,
+    backgroundColor: RacingTheme.colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: RacingTheme.colors.secondary,
+  },
+  analyzeIcon: {
+    fontSize: RacingTheme.typography.body,
+    color: RacingTheme.colors.secondary,
   },
   expandedContent: {
     padding: RacingTheme.spacing.md,

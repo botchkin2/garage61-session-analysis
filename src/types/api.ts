@@ -164,6 +164,66 @@ export interface LapStatistics {
   consistency: number; // Lower is better
 }
 
+// Session Analysis Types
+export interface SessionData {
+  eventId: string;
+  eventName?: string;
+  session: number;
+  sessionType: number;
+  laps: Lap[];
+  track: TrackInfo;
+  car: CarInfo;
+  startTime: string;
+}
+
+export interface SectorAnalysis {
+  sectorIndex: number;
+  sectorNumber: number;
+  bestTime: number;
+  averageTime: number;
+  standardDeviation: number;
+  consistency: number; // Lower is better (coefficient of variation)
+  lapCount: number;
+  times: number[];
+  optimalTime: number; // Best time from any lap in this sector
+  improvementPotential: number; // Gap between average and best (seconds)
+  improvementPercentage: number; // How much faster best is than average (%)
+  performanceTrend: 'improving' | 'declining' | 'stable'; // Trend over laps
+}
+
+export interface LapComparison {
+  lapId: string;
+  lapNumber: number;
+  lapTime: number;
+  rank: number;
+  optimalLapTime: number; // Sum of best sector times
+  timeFromOptimal: number; // Difference from optimal lap
+  sectorBreakdown: {
+    sectorIndex: number;
+    sectorTime: number;
+    optimalSectorTime: number;
+    timeFromOptimal: number;
+  }[];
+}
+
+export interface OptimalLapAnalysis {
+  optimalLapTime: number; // Sum of all best sector times
+  optimalSectorTimes: number[]; // Array of best times for each sector
+  lapComparisons: LapComparison[]; // Each lap compared to optimal
+  bestAchievableLap: LapComparison | null; // Best actual lap achieved
+  averageTimeFromOptimal: number;
+}
+
+export interface SessionAnalysis {
+  session: SessionData;
+  sectorAnalysis: SectorAnalysis[];
+  mostInconsistentSector: SectorAnalysis | null;
+  overallConsistency: number;
+  totalLaps: number;
+  validSectorLaps: number;
+  optimalLapAnalysis: OptimalLapAnalysis;
+}
+
 // Generic API response wrapper
 export interface ApiResponse<T> {
   data: T;

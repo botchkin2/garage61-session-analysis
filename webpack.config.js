@@ -92,7 +92,7 @@ module.exports = {
       '/api/garage61': {
         target: 'https://garage61.net/api/v1',
         changeOrigin: true,
-        pathRewrite: (path, req) => {
+        pathRewrite: (pathStr, req) => {
           console.log(
             'Proxying:',
             path,
