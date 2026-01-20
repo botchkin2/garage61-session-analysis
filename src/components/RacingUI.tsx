@@ -1,6 +1,12 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ViewStyle } from 'react-native';
-import { RacingTheme } from '@/theme';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ViewStyle,
+} from 'react-native';
+import {RacingTheme} from '@/theme';
 
 interface RacingCardProps {
   children: React.ReactNode;
@@ -8,10 +14,12 @@ interface RacingCardProps {
   glow?: boolean;
 }
 
-export const RacingCard: React.FC<RacingCardProps> = ({ children, style, glow = false }) => (
-  <View style={[styles.card, glow && styles.cardGlow, style]}>
-    {children}
-  </View>
+export const RacingCard: React.FC<RacingCardProps> = ({
+  children,
+  style,
+  glow = false,
+}) => (
+  <View style={[styles.card, glow && styles.cardGlow, style]}>{children}</View>
 );
 
 interface RacingButtonProps {
@@ -37,14 +45,8 @@ export const RacingButton: React.FC<RacingButtonProps> = ({
   ];
 
   return (
-    <TouchableOpacity
-      style={buttonStyle}
-      onPress={onPress}
-      disabled={disabled}
-    >
-      <Text style={[styles.buttonText, styles[`${variant}Text`]]}>
-        {title}
-      </Text>
+    <TouchableOpacity style={buttonStyle} onPress={onPress} disabled={disabled}>
+      <Text style={[styles.buttonText, styles[`${variant}Text`]]}>{title}</Text>
     </TouchableOpacity>
   );
 };
@@ -54,28 +56,31 @@ interface StatusBadgeProps {
   style?: ViewStyle;
 }
 
-export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, style }) => {
+export const StatusBadge: React.FC<StatusBadgeProps> = ({status, style}) => {
   const getStatusConfig = () => {
     switch (status) {
       case 'clean':
-        return { color: RacingTheme.colors.success, text: 'CLEAN' };
+        return {color: RacingTheme.colors.success, text: 'CLEAN'};
       case 'offtrack':
-        return { color: RacingTheme.colors.error, text: 'OFF TRACK' };
+        return {color: RacingTheme.colors.error, text: 'OFF TRACK'};
       case 'pit':
-        return { color: RacingTheme.colors.warning, text: 'PIT' };
+        return {color: RacingTheme.colors.warning, text: 'PIT'};
       case 'incomplete':
-        return { color: RacingTheme.colors.textTertiary, text: 'INCOMPLETE' };
+        return {color: RacingTheme.colors.textTertiary, text: 'INCOMPLETE'};
       case 'best':
-        return { color: RacingTheme.colors.primary, text: 'BEST LAP' };
+        return {color: RacingTheme.colors.primary, text: 'BEST LAP'};
       default:
-        return { color: RacingTheme.colors.textSecondary, text: status.toUpperCase() };
+        return {
+          color: RacingTheme.colors.textSecondary,
+          text: status.toUpperCase(),
+        };
     }
   };
 
-  const { color, text } = getStatusConfig();
+  const {color, text} = getStatusConfig();
 
   return (
-    <View style={[styles.badge, { backgroundColor: color }, style]}>
+    <View style={[styles.badge, {backgroundColor: color}, style]}>
       <Text style={styles.badgeText}>{text}</Text>
     </View>
   );
@@ -89,12 +94,21 @@ interface MetricCardProps {
   style?: ViewStyle;
 }
 
-export const MetricCard: React.FC<MetricCardProps> = ({ title, value, unit, trend, style }) => {
+export const MetricCard: React.FC<MetricCardProps> = ({
+  title,
+  value,
+  unit,
+  trend,
+  style,
+}) => {
   const getTrendColor = () => {
     switch (trend) {
-      case 'up': return RacingTheme.colors.success;
-      case 'down': return RacingTheme.colors.error;
-      default: return RacingTheme.colors.primary;
+      case 'up':
+        return RacingTheme.colors.success;
+      case 'down':
+        return RacingTheme.colors.error;
+      default:
+        return RacingTheme.colors.primary;
     }
   };
 
@@ -106,7 +120,9 @@ export const MetricCard: React.FC<MetricCardProps> = ({ title, value, unit, tren
         {unit && <Text style={styles.metricUnit}> {unit}</Text>}
       </Text>
       {trend && (
-        <View style={[styles.trendIndicator, { backgroundColor: getTrendColor() }]} />
+        <View
+          style={[styles.trendIndicator, {backgroundColor: getTrendColor()}]}
+        />
       )}
     </RacingCard>
   );
@@ -118,7 +134,11 @@ interface LapTimeProps {
   style?: ViewStyle;
 }
 
-export const LapTime: React.FC<LapTimeProps> = ({ time, isBest = false, style }) => {
+export const LapTime: React.FC<LapTimeProps> = ({
+  time,
+  isBest = false,
+  style,
+}) => {
   const formatTime = (seconds: number): string => {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = (seconds % 60).toFixed(3);
@@ -126,11 +146,7 @@ export const LapTime: React.FC<LapTimeProps> = ({ time, isBest = false, style })
   };
 
   return (
-    <Text style={[
-      styles.lapTime,
-      isBest && styles.bestLapTime,
-      style
-    ]}>
+    <Text style={[styles.lapTime, isBest && styles.bestLapTime, style]}>
       {formatTime(time)}
     </Text>
   );
@@ -140,7 +156,7 @@ interface DividerProps {
   style?: ViewStyle;
 }
 
-export const RacingDivider: React.FC<DividerProps> = ({ style }) => (
+export const RacingDivider: React.FC<DividerProps> = ({style}) => (
   <View style={[styles.divider, style]} />
 );
 
@@ -245,7 +261,7 @@ const styles = StyleSheet.create({
   bestLapTime: {
     color: RacingTheme.colors.secondary,
     textShadowColor: RacingTheme.colors.secondary,
-    textShadowOffset: { width: 0, height: 0 },
+    textShadowOffset: {width: 0, height: 0},
     textShadowRadius: 4,
   },
   divider: {

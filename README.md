@@ -17,6 +17,7 @@ A React Native application built with TypeScript and best practices.
 This project structure is set up, but you'll need to initialize the native iOS and Android projects. You have two options:
 
 #### Option 1: Use React Native CLI (Recommended)
+
 ```bash
 # Initialize React Native project (this will create ios/ and android/ folders)
 npx react-native init LapAnalysis --template react-native-template-typescript
@@ -26,9 +27,11 @@ npx react-native init LapAnalysis --template react-native-template-typescript
 ```
 
 #### Option 2: Manual Setup
+
 If you already have a React Native project initialized, just install dependencies:
 
 1. Install dependencies:
+
 ```bash
 npm install
 # or
@@ -36,6 +39,7 @@ yarn install
 ```
 
 2. For iOS (macOS only):
+
 ```bash
 cd ios && pod install && cd ..
 ```
@@ -43,6 +47,7 @@ cd ios && pod install && cd ..
 ### Running the App
 
 #### iOS
+
 ```bash
 npm run ios
 # or
@@ -50,6 +55,7 @@ yarn ios
 ```
 
 #### Android
+
 ```bash
 npm run android
 # or
@@ -57,14 +63,17 @@ yarn android
 ```
 
 #### Web (Browser)
+
 ```bash
 npm run web
 # or
 yarn web
 ```
+
 This will start a development server at `http://localhost:3000` and open it in your browser.
 
 #### Start Metro Bundler
+
 ```bash
 npm start
 # or
@@ -105,6 +114,7 @@ yarn start
 ### Code Style
 
 The project uses ESLint and Prettier for code formatting. Run:
+
 ```bash
 npm run lint
 ```
@@ -112,6 +122,7 @@ npm run lint
 ### TypeScript
 
 TypeScript is configured with strict mode enabled. Path aliases are set up for easier imports:
+
 - `@/` - src root
 - `@components/` - components folder
 - `@screens/` - screens folder
@@ -122,6 +133,7 @@ TypeScript is configured with strict mode enabled. Path aliases are set up for e
 ## Next Steps
 
 This is a basic Hello World app. You can now:
+
 - Add navigation (React Navigation)
 - Create new screens and components
 - Add state management (Redux, Zustand, etc.)

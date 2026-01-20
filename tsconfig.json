@@ -24,11 +24,7 @@
       "@types/*": ["src/types/*"]
     }
   },
-  "include": [
-    "src/**/*",
-    "App.tsx",
-    "index.js"
-  ],
+  "include": ["src/**/*", "App.tsx", "index.js"],
   "exclude": [
     "node_modules",
     "babel.config.js",

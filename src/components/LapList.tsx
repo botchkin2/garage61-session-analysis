@@ -1,9 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, ScrollView, Animated } from 'react-native';
-import { apiClient } from '@/utils';
-import { Lap, LapsResponse } from '@/types';
-import { RacingCard, RacingButton, StatusBadge, MetricCard, LapTime, RacingDivider } from '@/components';
-import { RacingTheme } from '@/theme';
+import React, {useState, useEffect, useCallback} from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  ActivityIndicator,
+  ScrollView,
+  Animated,
+} from 'react-native';
+import {apiClient} from '@/utils';
+import {Lap, LapsResponse} from '@/types';
+import {
+  RacingCard,
+  RacingButton,
+  StatusBadge,
+  MetricCard,
+  LapTime,
+  RacingDivider,
+} from '@/components';
+import {RacingTheme} from '@/theme';
 
 interface EventGroup {
   eventId: string;
@@ -23,14 +39,13 @@ const LapList: React.FC = () => {
   const [laps, setLaps] = useState<Lap[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [totalLaps, setTotalLaps] = useState(0);
   const [eventGroups, setEventGroups] = useState<EventGroup[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [fadeAnim] = useState(new Animated.Value(0));
 
   // Group laps by event ID with racing metrics
-  const groupLapsByEvent = (lapData: Lap[]): EventGroup[] => {
-    const groups: { [key: string]: EventGroup } = {};
+  const groupLapsByEvent = useCallback((lapData: Lap[]): EventGroup[] => {
+    const groups: {[key: string]: EventGroup} = {};
 
     lapData.forEach(lap => {
       const eventId = lap.event || 'No Event';
@@ -53,7 +68,10 @@ const LapList: React.FC = () => {
       }
 
       groups[eventId].laps.push(lap);
-      groups[eventId].bestLapTime = Math.min(groups[eventId].bestLapTime, lap.lapTime);
+      groups[eventId].bestLapTime = Math.min(
+        groups[eventId].bestLapTime,
+        lap.lapTime,
+      );
       groups[eventId].totalLaps++;
 
       // Track session types
@@ -84,57 +102,68 @@ const LapList: React.FC = () => {
     });
 
     // Sort events by most recent first
-    return Object.values(groups).sort((a, b) =>
-      new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+    return Object.values(groups).sort(
+      (a, b) =>
+        new Date(b.startTime).getTime() - new Date(a.startTime).getTime(),
     );
-  };
+  }, []);
 
-  const loadLaps = async (isRefresh = false) => {
-    try {
-      if (isRefresh) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
+  const loadLaps = useCallback(
+    async (isRefresh = false) => {
+      try {
+        if (isRefresh) {
+          setRefreshing(true);
+        } else {
+          setLoading(true);
+        }
+        setError(null);
+
+        console.log('LapList: Starting to load laps...');
+
+        // Test API connectivity
+        const canConnect = await apiClient.ping();
+        if (!canConnect) {
+          throw new Error(
+            'Cannot connect to Garage 61 API. Check your token and network connection.',
+          );
+        }
+
+        // Get laps from last 24 hours
+        const response: LapsResponse = await apiClient.getLaps({
+          limit: 200,
+          age: 1,
+          drivers: 'me',
+          group: 'none',
+        });
+
+        console.log(
+          'LapList: Successfully loaded',
+          response.items.length,
+          'laps out of',
+          response.total,
+        );
+        setLaps(response.items);
+
+        // Group laps by event with enhanced metrics
+        const groupedEvents = groupLapsByEvent(response.items);
+        setEventGroups(groupedEvents);
+        console.log('LapList: Grouped into', groupedEvents.length, 'events');
+      } catch (err) {
+        console.error('LapList: Error loading laps:', err);
+        setError(
+          err instanceof Error ? err.message : 'Failed to load lap data',
+        );
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-      setError(null);
-
-      console.log('LapList: Starting to load laps...');
-
-      // Test API connectivity
-      const canConnect = await apiClient.ping();
-      if (!canConnect) {
-        throw new Error('Cannot connect to Garage 61 API. Check your token and network connection.');
-      }
-
-      // Get laps from last 24 hours
-      const response: LapsResponse = await apiClient.getLaps({
-        limit: 200,
-        age: 1,
-        drivers: 'me',
-        group: 'none',
-      });
-
-      console.log('LapList: Successfully loaded', response.items.length, 'laps out of', response.total);
-      setLaps(response.items);
-      setTotalLaps(response.total);
-
-      // Group laps by event with enhanced metrics
-      const eventGroups = groupLapsByEvent(response.items);
-      setEventGroups(eventGroups);
-      console.log('LapList: Grouped into', eventGroups.length, 'events');
-    } catch (err) {
-      console.error('LapList: Error loading laps:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load lap data');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+    },
+    [groupLapsByEvent],
+  );
 
   const handleRefresh = () => {
     loadLaps(true);
   };
-
 
   useEffect(() => {
     loadLaps();
@@ -145,7 +174,7 @@ const LapList: React.FC = () => {
       duration: RacingTheme.animations.normal,
       useNativeDriver: true,
     }).start();
-  }, []);
+  }, [fadeAnim, loadLaps]);
 
   const formatLapTime = (seconds: number): string => {
     const minutes = Math.floor(seconds / 60);
@@ -159,10 +188,14 @@ const LapList: React.FC = () => {
 
   const getSessionTypeName = (type: number): string => {
     switch (type) {
-      case 1: return 'Practice';
-      case 2: return 'Qualifying';
-      case 3: return 'Race';
-      default: return 'Unknown';
+      case 1:
+        return 'Practice';
+      case 2:
+        return 'Qualifying';
+      case 3:
+        return 'Race';
+      default:
+        return 'Unknown';
     }
   };
 
@@ -171,7 +204,10 @@ const LapList: React.FC = () => {
       <View style={styles.mainContainer}>
         <View style={styles.fullHeightContainer}>
           <View style={styles.centerContainer}>
-            <ActivityIndicator size="large" color={RacingTheme.colors.primary} />
+            <ActivityIndicator
+              size="large"
+              color={RacingTheme.colors.primary}
+            />
             <Text style={styles.loadingText}>LOADING TELEMETRY DATA...</Text>
           </View>
         </View>
@@ -185,9 +221,7 @@ const LapList: React.FC = () => {
         <View style={styles.fullHeightContainer}>
           <View style={styles.centerContainer}>
             <Text style={styles.errorText}>TELEMETRY ERROR</Text>
-            <Text style={styles.errorText}>
-              {error}
-            </Text>
+            <Text style={styles.errorText}>{error}</Text>
             <RacingButton
               title="RETRY CONNECTION"
               onPress={() => loadLaps()}
@@ -204,166 +238,184 @@ const LapList: React.FC = () => {
     setEventGroups(groups =>
       groups.map(group =>
         group.eventId === eventId
-          ? { ...group, expanded: !group.expanded }
-          : group
-      )
+          ? {...group, expanded: !group.expanded}
+          : group,
+      ),
     );
   };
 
   // Calculate summary statistics
   const totalEvents = eventGroups.length;
   const bestOverallTime = Math.min(...eventGroups.map(g => g.bestLapTime));
-  const averageOverallTime = eventGroups.reduce((sum, g) => sum + g.averageLapTime, 0) / totalEvents;
+  const averageOverallTime =
+    eventGroups.reduce((sum, g) => sum + g.averageLapTime, 0) / totalEvents;
 
   return (
     <View style={styles.mainContainer}>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.contentContainer}
-        showsVerticalScrollIndicator={true}
-      >
-        <Animated.View style={[{ opacity: fadeAnim }]}>
+        showsVerticalScrollIndicator={true}>
+        <Animated.View style={[{opacity: fadeAnim}]}>
           <View style={styles.container}>
-      {/* Racing Dashboard Header */}
-      <View style={styles.dashboardHeader}>
-        <Text style={styles.dashboardTitle}>RACING ANALYTICS</Text>
-        <Text style={styles.dashboardSubtitle}>Last 24 Hours Performance</Text>
-      </View>
+            {/* Racing Dashboard Header */}
+            <View style={styles.dashboardHeader}>
+              <Text style={styles.dashboardTitle}>RACING ANALYTICS</Text>
+              <Text style={styles.dashboardSubtitle}>
+                Last 24 Hours Performance
+              </Text>
+            </View>
 
-      {/* Performance Metrics Grid */}
-      <View style={styles.metricsGrid}>
-        <MetricCard
-          title="TOTAL LAPS"
-          value={laps.length.toString()}
-          style={styles.metricCard}
-        />
-        <MetricCard
-          title="SESSIONS"
-          value={totalEvents.toString()}
-          style={styles.metricCard}
-        />
-        <MetricCard
-          title="BEST LAP"
-          value={bestOverallTime === Infinity ? '--:--.---' : formatLapTime(bestOverallTime)}
-          style={styles.metricCard}
-        />
-        <MetricCard
-          title="AVG LAP"
-          value={isNaN(averageOverallTime) ? '--:--.---' : formatLapTime(averageOverallTime)}
-          style={styles.metricCard}
-        />
-      </View>
+            {/* Performance Metrics Grid */}
+            <View style={styles.metricsGrid}>
+              <MetricCard
+                title="TOTAL LAPS"
+                value={laps.length.toString()}
+                style={styles.metricCard}
+              />
+              <MetricCard
+                title="SESSIONS"
+                value={totalEvents.toString()}
+                style={styles.metricCard}
+              />
+              <MetricCard
+                title="BEST LAP"
+                value={
+                  bestOverallTime === Infinity
+                    ? '--:--.---'
+                    : formatLapTime(bestOverallTime)
+                }
+                style={styles.metricCard}
+              />
+              <MetricCard
+                title="AVG LAP"
+                value={
+                  isNaN(averageOverallTime)
+                    ? '--:--.---'
+                    : formatLapTime(averageOverallTime)
+                }
+                style={styles.metricCard}
+              />
+            </View>
 
-      {/* Refresh Button */}
-      <RacingButton
-        title="🔄 REFRESH TELEMETRY"
-        onPress={handleRefresh}
-        style={styles.refreshButton}
-        disabled={refreshing}
-      />
+            {/* Refresh Button */}
+            <RacingButton
+              title="🔄 REFRESH TELEMETRY"
+              onPress={handleRefresh}
+              style={styles.refreshButton}
+              disabled={refreshing}
+            />
 
-      {/* Event Sessions List */}
-      <View style={styles.eventsSection}>
-        <Text style={styles.sectionTitle}>SESSION ANALYSIS</Text>
+            {/* Event Sessions List */}
+            <View style={styles.eventsSection}>
+              <Text style={styles.sectionTitle}>SESSION ANALYSIS</Text>
 
-        <FlatList
-          data={eventGroups}
-          renderItem={({ item: event }) => (
-          <RacingCard key={event.eventId} style={styles.eventCard}>
-            {/* Event Header */}
-            <TouchableOpacity
-              style={styles.eventHeader}
-              onPress={() => toggleEvent(event.eventId)}
-            >
-              <View style={styles.eventMainInfo}>
-                <View style={styles.eventTitleRow}>
-                  <Text style={styles.eventTitle}>
-                    {event.primaryCar}
+              <FlatList
+                data={eventGroups}
+                renderItem={({item: event}) => (
+                  <RacingCard key={event.eventId} style={styles.eventCard}>
+                    {/* Event Header */}
+                    <TouchableOpacity
+                      style={styles.eventHeader}
+                      onPress={() => toggleEvent(event.eventId)}>
+                      <View style={styles.eventMainInfo}>
+                        <View style={styles.eventTitleRow}>
+                          <Text style={styles.eventTitle}>
+                            {event.primaryCar}
+                          </Text>
+                          <Text style={styles.eventTrack}>
+                            {event.primaryTrack}
+                          </Text>
+                        </View>
+                        <View style={styles.eventMetaRow}>
+                          <Text style={styles.eventDate}>
+                            {formatDate(event.startTime)}
+                          </Text>
+                          <Text style={styles.eventSessions}>
+                            {event.sessionTypes.join(' • ')}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.eventStats}>
+                        <View style={styles.statItem}>
+                          <Text style={styles.statNumber}>
+                            {event.totalLaps}
+                          </Text>
+                          <Text style={styles.statLabel}>LAPS</Text>
+                        </View>
+                        <View style={styles.statItem}>
+                          <Text style={styles.statNumber}>
+                            <LapTime time={event.bestLapTime} isBest />
+                          </Text>
+                          <Text style={styles.statLabel}>BEST</Text>
+                        </View>
+                        <Text style={styles.expandIcon}>
+                          {event.expanded ? '▼' : '▶'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    {/* Expanded Lap Details */}
+                    {event.expanded && (
+                      <View style={styles.expandedContent}>
+                        <RacingDivider />
+
+                        {/* Lap List Header */}
+                        <View style={styles.lapListHeader}>
+                          <Text style={styles.lapHeaderRank}>RANK</Text>
+                          <Text style={styles.lapHeaderTime}>LAP TIME</Text>
+                          <Text style={styles.lapHeaderSession}>SESSION</Text>
+                          <Text style={styles.lapHeaderStatus}>STATUS</Text>
+                        </View>
+
+                        <RacingDivider />
+
+                        {/* Individual Laps */}
+                        {event.laps.map((lap, index) => (
+                          <View key={lap.id} style={styles.lapRow}>
+                            <Text style={styles.lapRank}>#{index + 1}</Text>
+                            <LapTime
+                              time={lap.lapTime}
+                              isBest={index === 0}
+                              style={styles.lapTimeCell}
+                            />
+                            <Text style={styles.lapSession}>
+                              {getSessionTypeName(lap.sessionType)} #
+                              {lap.session}
+                            </Text>
+                            <View style={styles.lapStatus}>
+                              {lap.clean && <StatusBadge status="clean" />}
+                              {lap.offtrack && (
+                                <StatusBadge status="offtrack" />
+                              )}
+                              {lap.pitlane && <StatusBadge status="pit" />}
+                              {lap.incomplete && (
+                                <StatusBadge status="incomplete" />
+                              )}
+                            </View>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </RacingCard>
+                )}
+                keyExtractor={item => item.eventId}
+                showsVerticalScrollIndicator={false}
+                style={styles.eventsList}
+              />
+
+              {eventGroups.length === 0 && !loading && (
+                <RacingCard style={styles.emptyCard}>
+                  <Text style={styles.emptyIcon}>🏁</Text>
+                  <Text style={styles.emptyTitle}>NO RACING DATA</Text>
+                  <Text style={styles.emptyMessage}>
+                    No laps recorded in the last 24 hours.{'\n'}
+                    Hit the track and start analyzing your performance!
                   </Text>
-                  <Text style={styles.eventTrack}>
-                    {event.primaryTrack}
-                  </Text>
-                </View>
-                <View style={styles.eventMetaRow}>
-                  <Text style={styles.eventDate}>{formatDate(event.startTime)}</Text>
-                  <Text style={styles.eventSessions}>
-                    {event.sessionTypes.join(' • ')}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.eventStats}>
-                <View style={styles.statItem}>
-                  <Text style={styles.statNumber}>{event.totalLaps}</Text>
-                  <Text style={styles.statLabel}>LAPS</Text>
-                </View>
-                <View style={styles.statItem}>
-                  <Text style={styles.statNumber}>
-                    <LapTime time={event.bestLapTime} isBest />
-                  </Text>
-                  <Text style={styles.statLabel}>BEST</Text>
-                </View>
-                <Text style={styles.expandIcon}>
-                  {event.expanded ? '▼' : '▶'}
-                </Text>
-              </View>
-            </TouchableOpacity>
-
-            {/* Expanded Lap Details */}
-            {event.expanded && (
-              <View style={styles.expandedContent}>
-                <RacingDivider />
-
-                {/* Lap List Header */}
-                <View style={styles.lapListHeader}>
-                  <Text style={styles.lapHeaderRank}>RANK</Text>
-                  <Text style={styles.lapHeaderTime}>LAP TIME</Text>
-                  <Text style={styles.lapHeaderSession}>SESSION</Text>
-                  <Text style={styles.lapHeaderStatus}>STATUS</Text>
-                </View>
-
-                <RacingDivider />
-
-                {/* Individual Laps */}
-                {event.laps.map((lap, index) => (
-                  <View key={lap.id} style={styles.lapRow}>
-                    <Text style={styles.lapRank}>#{index + 1}</Text>
-                    <LapTime
-                      time={lap.lapTime}
-                      isBest={index === 0}
-                      style={styles.lapTimeCell}
-                    />
-                    <Text style={styles.lapSession}>
-                      {getSessionTypeName(lap.sessionType)} #{lap.session}
-                    </Text>
-                    <View style={styles.lapStatus}>
-                      {lap.clean && <StatusBadge status="clean" />}
-                      {lap.offtrack && <StatusBadge status="offtrack" />}
-                      {lap.pitlane && <StatusBadge status="pit" />}
-                      {lap.incomplete && <StatusBadge status="incomplete" />}
-                    </View>
-                  </View>
-                ))}
-              </View>
-            )}
-          </RacingCard>
-          )}
-          keyExtractor={(item) => item.eventId}
-          showsVerticalScrollIndicator={false}
-          style={styles.eventsList}
-        />
-
-        {eventGroups.length === 0 && !loading && (
-          <RacingCard style={styles.emptyCard}>
-            <Text style={styles.emptyIcon}>🏁</Text>
-            <Text style={styles.emptyTitle}>NO RACING DATA</Text>
-            <Text style={styles.emptyMessage}>
-              No laps recorded in the last 24 hours.{'\n'}
-              Hit the track and start analyzing your performance!
-            </Text>
-          </RacingCard>
-        )}
-      </View>
+                </RacingCard>
+              )}
+            </View>
 
             <View style={styles.bottomSpacing} />
           </View>

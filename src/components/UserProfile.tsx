@@ -1,12 +1,18 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Animated } from 'react-native';
-import { useAuth } from '@/utils';
-import { Garage61User } from '@/types';
-import { RacingCard, RacingButton, RacingDivider, StatusBadge } from '@/components';
-import { RacingTheme } from '@/theme';
+import React, {useEffect, useState} from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+  Animated,
+} from 'react-native';
+import {useAuth} from '@/utils';
+import {RacingCard, RacingButton, StatusBadge} from '@/components';
+import {RacingTheme} from '@/theme';
 
 const UserProfile: React.FC = () => {
-  const { user, isLoading, error, isAuthenticated } = useAuth();
+  const {user, isLoading, error, isAuthenticated} = useAuth();
   const [fadeAnim] = useState(new Animated.Value(0));
 
   useEffect(() => {
@@ -17,15 +23,20 @@ const UserProfile: React.FC = () => {
         useNativeDriver: true,
       }).start();
     }
-  }, [isLoading, error, isAuthenticated, user]);
+  }, [isLoading, error, isAuthenticated, user, fadeAnim]);
 
   if (isLoading) {
     return (
       <View style={styles.mainContainer}>
         <View style={styles.fullHeightContainer}>
           <View style={styles.centerContainer}>
-            <ActivityIndicator size="large" color={RacingTheme.colors.primary} />
-            <Text style={styles.loadingText}>INITIALIZING DRIVER PROFILE...</Text>
+            <ActivityIndicator
+              size="large"
+              color={RacingTheme.colors.primary}
+            />
+            <Text style={styles.loadingText}>
+              INITIALIZING DRIVER PROFILE...
+            </Text>
           </View>
         </View>
       </View>
@@ -38,9 +49,7 @@ const UserProfile: React.FC = () => {
         <View style={styles.fullHeightContainer}>
           <View style={styles.centerContainer}>
             <Text style={styles.errorText}>CONNECTION FAILED</Text>
-            <Text style={styles.errorSubtext}>
-              {error}
-            </Text>
+            <Text style={styles.errorSubtext}>{error}</Text>
             <RacingButton
               title="RETRY CONNECTION"
               onPress={() => window.location.reload()}
@@ -72,106 +81,110 @@ const UserProfile: React.FC = () => {
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.contentContainer}
-        showsVerticalScrollIndicator={true}
-      >
-        <Animated.View style={[{ opacity: fadeAnim }]}>
+        showsVerticalScrollIndicator={true}>
+        <Animated.View style={[{opacity: fadeAnim}]}>
           <View style={styles.container}>
-      {/* Driver Header Card */}
-      <RacingCard style={styles.headerCard} glow>
-        <View style={styles.driverHeader}>
-          <View style={styles.driverAvatar}>
-            <Text style={styles.driverInitial}>
-              {user.firstName.charAt(0)}{user.lastName.charAt(0)}
-            </Text>
-          </View>
-          <View style={styles.driverInfo}>
-            <Text style={styles.driverName}>
-              {user.firstName} {user.lastName}
-            </Text>
-            <Text style={styles.driverNickname}>"{user.nickName}"</Text>
-            <Text style={styles.driverId}>ID: {user.id}</Text>
-          </View>
-        </View>
-      </RacingCard>
-
-      {/* Subscription Status */}
-      <RacingCard style={styles.subscriptionCard}>
-        <View style={styles.cardHeader}>
-          <Text style={styles.cardIcon}>💳</Text>
-          <Text style={styles.cardTitle}>SUBSCRIPTION</Text>
-        </View>
-        <View style={styles.subscriptionContent}>
-          <Text style={styles.subscriptionPlan}>{user.subscriptionPlan}</Text>
-          <StatusBadge status="clean" style={styles.subscriptionBadge} />
-        </View>
-      </RacingCard>
-
-      {/* API Permissions */}
-      <RacingCard style={styles.permissionsCard}>
-        <View style={styles.cardHeader}>
-          <Text style={styles.cardIcon}>🔑</Text>
-          <Text style={styles.cardTitle}>API ACCESS</Text>
-        </View>
-        <View style={styles.permissionsGrid}>
-          {user.apiPermissions.map((permission, index) => (
-            <View key={index} style={styles.permissionChip}>
-              <Text style={styles.permissionText}>{permission}</Text>
-            </View>
-          ))}
-        </View>
-      </RacingCard>
-
-      {/* Teams */}
-      {user.teams && user.teams.length > 0 && (
-        <RacingCard style={styles.teamsCard}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardIcon}>🏎️</Text>
-            <Text style={styles.cardTitle}>RACING TEAMS</Text>
-          </View>
-          {user.teams.map((team, index) => (
-            <View key={index} style={styles.teamRow}>
-              <View style={styles.teamInfo}>
-                <Text style={styles.teamName}>{team.name}</Text>
-                <Text style={styles.teamRole}>{team.role}</Text>
+            {/* Driver Header Card */}
+            <RacingCard style={styles.headerCard} glow>
+              <View style={styles.driverHeader}>
+                <View style={styles.driverAvatar}>
+                  <Text style={styles.driverInitial}>
+                    {user.firstName.charAt(0)}
+                    {user.lastName.charAt(0)}
+                  </Text>
+                </View>
+                <View style={styles.driverInfo}>
+                  <Text style={styles.driverName}>
+                    {user.firstName} {user.lastName}
+                  </Text>
+                  <Text style={styles.driverNickname}>"{user.nickName}"</Text>
+                  <Text style={styles.driverId}>ID: {user.id}</Text>
+                </View>
               </View>
-              <StatusBadge status="best" style={styles.teamBadge} />
-            </View>
-          ))}
-        </RacingCard>
-      )}
+            </RacingCard>
 
-      {/* Data Packs */}
-      {user.subscribedDataPacks && user.subscribedDataPacks.length > 0 && (
-        <RacingCard style={styles.dataPacksCard}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardIcon}>📊</Text>
-            <Text style={styles.cardTitle}>DATA PACKS</Text>
-          </View>
-          <Text style={styles.dataPackCount}>
-            {user.subscribedDataPacks.length} ACTIVE DATA PACK{user.subscribedDataPacks.length !== 1 ? 'S' : ''}
-          </Text>
-          <StatusBadge status="clean" style={styles.dataPackBadge} />
-        </RacingCard>
-      )}
+            {/* Subscription Status */}
+            <RacingCard style={styles.subscriptionCard}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardIcon}>💳</Text>
+                <Text style={styles.cardTitle}>SUBSCRIPTION</Text>
+              </View>
+              <View style={styles.subscriptionContent}>
+                <Text style={styles.subscriptionPlan}>
+                  {user.subscriptionPlan}
+                </Text>
+                <StatusBadge status="clean" style={styles.subscriptionBadge} />
+              </View>
+            </RacingCard>
 
-      {/* Driver Stats Footer */}
-      <RacingCard style={styles.statsCard}>
-        <Text style={styles.statsTitle}>DRIVER STATUS</Text>
-        <View style={styles.statsGrid}>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>ONLINE</Text>
-            <Text style={styles.statLabel}>Status</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{user.slug}</Text>
-            <Text style={styles.statLabel}>Handle</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>READY</Text>
-            <Text style={styles.statLabel}>System</Text>
-          </View>
-        </View>
-      </RacingCard>
+            {/* API Permissions */}
+            <RacingCard style={styles.permissionsCard}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardIcon}>🔑</Text>
+                <Text style={styles.cardTitle}>API ACCESS</Text>
+              </View>
+              <View style={styles.permissionsGrid}>
+                {user.apiPermissions.map((permission, index) => (
+                  <View key={index} style={styles.permissionChip}>
+                    <Text style={styles.permissionText}>{permission}</Text>
+                  </View>
+                ))}
+              </View>
+            </RacingCard>
+
+            {/* Teams */}
+            {user.teams && user.teams.length > 0 && (
+              <RacingCard style={styles.teamsCard}>
+                <View style={styles.cardHeader}>
+                  <Text style={styles.cardIcon}>🏎️</Text>
+                  <Text style={styles.cardTitle}>RACING TEAMS</Text>
+                </View>
+                {user.teams.map((team, index) => (
+                  <View key={index} style={styles.teamRow}>
+                    <View style={styles.teamInfo}>
+                      <Text style={styles.teamName}>{team.name}</Text>
+                      <Text style={styles.teamRole}>{team.role}</Text>
+                    </View>
+                    <StatusBadge status="best" style={styles.teamBadge} />
+                  </View>
+                ))}
+              </RacingCard>
+            )}
+
+            {/* Data Packs */}
+            {user.subscribedDataPacks &&
+              user.subscribedDataPacks.length > 0 && (
+                <RacingCard style={styles.dataPacksCard}>
+                  <View style={styles.cardHeader}>
+                    <Text style={styles.cardIcon}>📊</Text>
+                    <Text style={styles.cardTitle}>DATA PACKS</Text>
+                  </View>
+                  <Text style={styles.dataPackCount}>
+                    {user.subscribedDataPacks.length} ACTIVE DATA PACK
+                    {user.subscribedDataPacks.length !== 1 ? 'S' : ''}
+                  </Text>
+                  <StatusBadge status="clean" style={styles.dataPackBadge} />
+                </RacingCard>
+              )}
+
+            {/* Driver Stats Footer */}
+            <RacingCard style={styles.statsCard}>
+              <Text style={styles.statsTitle}>DRIVER STATUS</Text>
+              <View style={styles.statsGrid}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>ONLINE</Text>
+                  <Text style={styles.statLabel}>Status</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>{user.slug}</Text>
+                  <Text style={styles.statLabel}>Handle</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={styles.statValue}>READY</Text>
+                  <Text style={styles.statLabel}>System</Text>
+                </View>
+              </View>
+            </RacingCard>
 
             <View style={styles.bottomSpacing} />
           </View>

@@ -7,7 +7,15 @@ module.exports = {
   mode: 'development',
   devtool: 'source-map',
   resolve: {
-    extensions: ['.web.js', '.js', '.web.ts', '.ts', '.web.tsx', '.tsx', '.json'],
+    extensions: [
+      '.web.js',
+      '.js',
+      '.web.ts',
+      '.ts',
+      '.web.tsx',
+      '.tsx',
+      '.json',
+    ],
     alias: {
       'react-native$': 'react-native-web',
       '@': path.resolve(__dirname, 'src'),
@@ -32,7 +40,15 @@ module.exports = {
                 'module-resolver',
                 {
                   root: ['./src'],
-                  extensions: ['.web.js', '.ios.js', '.android.js', '.js', '.ts', '.tsx', '.json'],
+                  extensions: [
+                    '.web.js',
+                    '.ios.js',
+                    '.android.js',
+                    '.js',
+                    '.ts',
+                    '.tsx',
+                    '.json',
+                  ],
                   alias: {
                     '@': './src',
                     '@components': './src/components',
@@ -77,7 +93,12 @@ module.exports = {
         target: 'https://garage61.net/api/v1',
         changeOrigin: true,
         pathRewrite: (path, req) => {
-          console.log('Proxying:', path, '->', path.replace('/api/garage61', ''));
+          console.log(
+            'Proxying:',
+            path,
+            '->',
+            path.replace('/api/garage61', ''),
+          );
           return path.replace('/api/garage61', '');
         },
         logLevel: 'debug',

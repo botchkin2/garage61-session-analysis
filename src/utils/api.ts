@@ -1,5 +1,5 @@
-import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
-import { Garage61User, LapsResponse, ApiError } from '@/types';
+import axios, {AxiosInstance, AxiosResponse, AxiosError} from 'axios';
+import {Garage61User, LapsResponse, ApiError} from '@/types';
 
 // Environment variables
 // In development, use webpack proxy to avoid CORS issues
@@ -7,7 +7,7 @@ import { Garage61User, LapsResponse, ApiError } from '@/types';
 const isDevelopment = process.env.NODE_ENV === 'development';
 const API_BASE_URL = isDevelopment
   ? '/api/garage61' // Proxied through webpack dev server
-  : (process.env.GARAGE61_API_BASE_URL || 'https://garage61.net/api/v1');
+  : process.env.GARAGE61_API_BASE_URL || 'https://garage61.net/api/v1';
 const API_TOKEN = process.env.GARAGE61_API_TOKEN;
 
 if (!API_TOKEN) {
@@ -21,7 +21,7 @@ class ApiClient {
     this.client = axios.create({
       baseURL: API_BASE_URL,
       headers: {
-        'Authorization': `Bearer ${API_TOKEN}`,
+        Authorization: `Bearer ${API_TOKEN}`,
         'Content-Type': 'application/json',
       },
       timeout: 30000, // 30 second timeout
@@ -29,7 +29,7 @@ class ApiClient {
 
     // Response interceptor for error handling
     this.client.interceptors.response.use(
-      (response) => response,
+      response => response,
       (error: AxiosError) => {
         const apiError: ApiError = {
           message: error.message || 'An unexpected error occurred',
@@ -39,14 +39,16 @@ class ApiClient {
 
         console.error('API Error:', apiError);
         return Promise.reject(apiError);
-      }
+      },
     );
   }
 
   // Get current user information
   async getCurrentUser(): Promise<Garage61User> {
     try {
-      const response: AxiosResponse<Garage61User> = await this.client.get('/me');
+      const response: AxiosResponse<Garage61User> = await this.client.get(
+        '/me',
+      );
       return response.data;
     } catch (error) {
       throw error;
@@ -82,8 +84,8 @@ class ApiClient {
       const response: AxiosResponse<LapsResponse> = await this.client.get(url, {
         params: {
           limit: 100, // Default limit
-          ...processedParams
-        }
+          ...processedParams,
+        },
       });
       return response.data;
     } catch (error) {
@@ -95,7 +97,9 @@ class ApiClient {
   // Generic GET method for future endpoints
   async get<T>(endpoint: string, params?: Record<string, any>): Promise<T> {
     try {
-      const response: AxiosResponse<T> = await this.client.get(endpoint, { params });
+      const response: AxiosResponse<T> = await this.client.get(endpoint, {
+        params,
+      });
       return response.data;
     } catch (error) {
       throw error;

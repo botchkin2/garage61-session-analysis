@@ -1,8 +1,16 @@
-import React, { useState } from 'react';
-import {SafeAreaView, StatusBar, StyleSheet, TouchableOpacity, Text, View, Animated} from 'react-native';
-import { AuthProvider } from '@/utils';
-import { UserProfile, LapList } from '@/components';
-import { RacingTheme } from '@/theme';
+import React, {useState} from 'react';
+import {
+  SafeAreaView,
+  StatusBar,
+  StyleSheet,
+  TouchableOpacity,
+  Text,
+  View,
+  Animated,
+} from 'react-native';
+import {AuthProvider} from '@/utils';
+import {UserProfile, LapList} from '@/components';
+import {RacingTheme} from '@/theme';
 
 const App = (): React.JSX.Element => {
   const [activeTab, setActiveTab] = useState<'profile' | 'laps'>('profile');
@@ -23,7 +31,10 @@ const App = (): React.JSX.Element => {
   return (
     <AuthProvider>
       <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor={RacingTheme.colors.background} />
+        <StatusBar
+          barStyle="light-content"
+          backgroundColor={RacingTheme.colors.background}
+        />
 
         {/* Racing-themed Header */}
         <View style={styles.header}>
@@ -35,17 +46,23 @@ const App = (): React.JSX.Element => {
         <View style={styles.tabContainer}>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'profile' && styles.activeTab]}
-            onPress={() => switchTab('profile')}
-          >
-            <Text style={[styles.tabText, activeTab === 'profile' && styles.activeTabText]}>
+            onPress={() => switchTab('profile')}>
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === 'profile' && styles.activeTabText,
+              ]}>
               🏁 DRIVER
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'laps' && styles.activeTab]}
-            onPress={() => switchTab('laps')}
-          >
-            <Text style={[styles.tabText, activeTab === 'laps' && styles.activeTabText]}>
+            onPress={() => switchTab('laps')}>
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === 'laps' && styles.activeTabText,
+              ]}>
               📊 ANALYSIS
             </Text>
           </TouchableOpacity>
