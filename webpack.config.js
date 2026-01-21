@@ -95,11 +95,11 @@ module.exports = {
         pathRewrite: (pathStr, req) => {
           console.log(
             'Proxying:',
-            path,
+            pathStr,
             '->',
-            path.replace('/api/garage61', ''),
+            pathStr.replace('/api/garage61', ''),
           );
-          return path.replace('/api/garage61', '');
+          return pathStr.replace('/api/garage61', '');
         },
         logLevel: 'debug',
       },
