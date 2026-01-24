@@ -65,9 +65,10 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
     endIdx: 0,
   });
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentPosition, setCurrentPosition] = useState(0); // Continuous position (0 to allData.length)
+  // Removed currentPosition state - derived from visibleData.endIdx
   const [playbackSpeed, setPlaybackSpeed] = useState(1); // Speed multiplier (-5 to 5, negative = rewind)
-  const [dynamicSpeedMode, setDynamicSpeedMode] = useState(true); // Whether to use dynamic speed based on car speed
+  const [dynamicSpeedMode, setDynamicSpeedMode] = useState(false); // Whether to use dynamic speed based on car speed
+  const [realTimeScale, setRealTimeScale] = useState(1.0); // Scale factor for real-time playback (0.5x to 2.0x)
   const [zoomLevel, setZoomLevel] = useState(3); // Zoom level 1-5 (higher = more zoomed in/less data)
   const [selectedSeries, setSelectedSeries] = useState<string[]>(['brake']); // Selected data series to display (multi-select)
   const animationRef = useRef<NodeJS.Timeout | null>(null);
@@ -82,12 +83,12 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
     endIdx: number;
   } | null>(null);
 
-  // Update visible data based on current position and zoom level
-  // Data slides continuously from right to left: "now" is always at left (x=0)
+  // Update visible data based on position and zoom level
+  // Returns the new endIdx (current position)
   const updateVisibleData = useCallback(
-    (data: TimeSeriesData[], position: number) => {
+    (data: TimeSeriesData[], position: number): number => {
       if (!data || data.length === 0) {
-        return;
+        return 0;
       }
 
       const totalPoints = data.length;
@@ -104,7 +105,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
           startIdx: visibleDataCache.current.startIdx,
           endIdx: visibleDataCache.current.endIdx,
         });
-        return;
+        return visibleDataCache.current.startIdx;
       }
 
       // Calculate the range of data to show based on zoom level
@@ -115,10 +116,13 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
         Math.floor(totalPoints * (dataPercentage / 100)),
       );
 
-      // Position determines where the rightmost data point is
-      // Leftmost (x=0) is always "now", rightmost shows historical data
-      const endIdx = Math.min(totalPoints - 1, Math.floor(position));
-      const startIdx = Math.max(0, endIdx - pointsToShow + 1);
+      // Position determines where the leftmost data point is (x=0 = "now")
+      // Leftmost (x=0) is always "now", rightmost shows future data
+      const startIdx = Math.max(
+        0,
+        Math.min(totalPoints - pointsToShow, Math.floor(position)),
+      );
+      const endIdx = Math.min(totalPoints - 1, startIdx + pointsToShow - 1);
 
       const visiblePoints = data.slice(startIdx, endIdx + 1);
 
@@ -133,6 +137,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
       };
 
       setVisibleData({data: visiblePoints, startIdx, endIdx});
+      return startIdx;
     },
     [zoomLevel],
   );
@@ -334,37 +339,35 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
     setIsPlaying(true);
 
     const animate = () => {
-      setCurrentPosition(prevPos => {
-        let advancement = 1.767; // Real-time advancement: 58.91 points/sec at 33.3 Hz
+      const currentPos = getCurrentPosition();
+      let advancement = 1.767; // Base real-time advancement rate
 
-        if (dynamicSpeedMode) {
-          // Dynamic modulation based on car speed for real-time playback
-          // Use speed from current "now" position (x=0, left side) as requested
-          const currentSpeedMs =
-            processedData.raw[Math.floor(prevPos)]?.speed || 50;
-          const averageSpeedMs = 53.5;
-          const speedRatio = currentSpeedMs / averageSpeedMs;
-          advancement *= Math.max(0.3, Math.min(2.0, speedRatio));
-        } else {
-          // Manual speed control
-          advancement *= playbackSpeed;
-        }
+      if (dynamicSpeedMode) {
+        // Simple: multiply base rate by current speed at x=0 position
+        const speedAtX0 =
+          processedData.raw[Math.floor(currentPos)]?.speed || 50;
+        advancement *= (speedAtX0 / 50) * realTimeScale; // Normalize to ~50 m/s baseline
+      } else {
+        // Manual speed control
+        advancement *= playbackSpeed;
+      }
 
-        let nextPos = prevPos + advancement;
-        if (nextPos >= processedData.totalPoints) {
-          nextPos = 0; // Loop back to start
-        } else if (nextPos < 0) {
-          nextPos = processedData.totalPoints - 1; // Loop back to end
-        }
-        return nextPos;
-      });
+      let nextPos = currentPos + advancement;
+      if (nextPos >= processedData.totalPoints) {
+        nextPos = 0; // Loop back to start
+      } else if (nextPos < 0) {
+        nextPos = processedData.totalPoints - 1; // Loop back to end
+      }
+
+      updatePosition(nextPos);
     };
 
-    // Calculate delay based on speed (faster speed = shorter delay)
-    const baseDelay = 30; // Base delay in milliseconds for smooth animation
-    const speedDelay = Math.max(5, baseDelay / Math.abs(playbackSpeed));
+    // Use appropriate interval based on mode
+    const animationInterval = dynamicSpeedMode
+      ? 30
+      : Math.max(5, 30 / Math.abs(playbackSpeed));
 
-    animationRef.current = setInterval(animate, speedDelay);
+    animationRef.current = setInterval(animate, animationInterval);
   };
 
   // Stop playback
@@ -379,10 +382,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
   // Reset to beginning
   const resetPlayback = () => {
     stopPlayback();
-    setCurrentPosition(0);
-    if (processedData) {
-      updateVisibleData(processedData.raw, 0);
-    }
+    updatePosition(0);
   };
 
   useEffect(() => {
@@ -394,12 +394,26 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
     };
   }, [loadCsvData]);
 
-  // Update visible data when position or zoom level changes
+  // Update visible data when zoom level changes (initial position = 0)
   useEffect(() => {
     if (processedData) {
-      updateVisibleData(processedData.raw, currentPosition);
+      updateVisibleData(processedData.raw, 0);
     }
-  }, [zoomLevel, processedData, currentPosition, updateVisibleData]);
+  }, [zoomLevel, processedData, updateVisibleData]);
+
+  // Helper functions for position management
+  const getCurrentPosition = useCallback(
+    (): number => visibleData.startIdx,
+    [visibleData.startIdx],
+  );
+  const updatePosition = useCallback(
+    (newPosition: number) => {
+      if (processedData) {
+        updateVisibleData(processedData.raw, newPosition);
+      }
+    },
+    [processedData, updateVisibleData],
+  );
 
   // Get selected series data directly from processed data
   const getSelectedSeriesData = useCallback(() => {
@@ -429,52 +443,37 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
 
       // Restart with new speed
       const animate = () => {
-        setCurrentPosition(prevPos => {
-          let speedMultiplier = 1;
+        const currentPos = getCurrentPosition();
+        let advancement = 1.767; // Base real-time advancement rate
 
-          if (dynamicSpeedMode) {
-            // Real-time dynamic playback: modulate base real-time speed by car speed
-            // Use speed from current "now" position (x=0, left side) as requested
-            const currentSpeedMs =
-              processedData.raw[Math.floor(prevPos)]?.speed || 50;
-            const averageSpeedMs = 53.5; // Actual average speed from data analysis (m/s)
+        if (dynamicSpeedMode) {
+          // Simple: multiply base rate by current speed at x=0 position
+          const speedAtX0 =
+            processedData.raw[Math.floor(currentPos)]?.speed || 50;
+          advancement *= (speedAtX0 / 50) * realTimeScale; // Normalize to ~50 m/s baseline
+        } else {
+          // Manual speed control
+          advancement *= playbackSpeed;
+        }
 
-            // Base advancement for real-time playback (77 second lap, 4536 points)
-            // Need to advance 58.91 points/second, at 33.3 Hz animation = 1.767 points/frame
-            const baseAdvancement = 1.767;
+        let nextPos = currentPos + advancement;
+        if (nextPos >= processedData.totalPoints) {
+          nextPos = 0; // Loop back to start
+        } else if (nextPos < 0) {
+          nextPos = processedData.totalPoints - 1; // Loop back to end
+        }
 
-            // Modulate by car's speed relative to average (creates dynamic feel)
-            const speedRatio = currentSpeedMs / averageSpeedMs;
-            speedMultiplier = baseAdvancement * speedRatio;
-            // Clamp to reasonable range to prevent too extreme speeds
-            speedMultiplier = Math.max(0.3, Math.min(2.0, speedMultiplier));
-          } else {
-            // Use manual playback speed
-            speedMultiplier = playbackSpeed;
-          }
-
-          let nextPos = prevPos + 2 * speedMultiplier; // Move based on speed multiplier
-          if (nextPos >= processedData.totalPoints) {
-            nextPos = 0; // Loop back to start
-          } else if (nextPos < 0) {
-            nextPos = processedData.totalPoints - 1; // Loop back to end
-          }
-          return nextPos;
-        });
+        updatePosition(nextPos);
       };
 
-      const baseDelay = 30; // Base delay in milliseconds for smooth animation
-      const speedDelay = Math.max(10, baseDelay / Math.abs(playbackSpeed)); // Use absolute value for delay
+      // Use fixed interval for real-time mode, variable for manual mode
+      const animationInterval = dynamicSpeedMode
+        ? 30
+        : Math.max(10, 30 / Math.abs(playbackSpeed));
 
-      animationRef.current = setInterval(animate, speedDelay);
+      animationRef.current = setInterval(animate, animationInterval);
     }
-  }, [
-    playbackSpeed,
-    dynamicSpeedMode,
-    isPlaying,
-    processedData,
-    updateVisibleData,
-  ]);
+  });
 
   // Update visible data when zoom changes during playback
   useEffect(() => {
@@ -486,52 +485,46 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
 
       // Restart with new speed
       const animate = () => {
-        setCurrentPosition(prevPos => {
-          let speedMultiplier = 1;
+        const currentPos = getCurrentPosition();
+        let advancement = 1.767; // Base real-time advancement rate
 
-          if (dynamicSpeedMode) {
-            // Real-time dynamic playback: modulate base real-time speed by car speed
-            // Use speed from current "now" position (x=0, left side) as requested
-            const currentSpeedMs =
-              processedData.raw[Math.floor(prevPos)]?.speed || 50;
-            const averageSpeedMs = 53.5; // Actual average speed from data analysis (m/s)
+        if (dynamicSpeedMode) {
+          // Simple: multiply base rate by current speed at x=0 position
+          const speedAtX0 =
+            processedData.raw[Math.floor(currentPos)]?.speed || 50;
+          advancement *= (speedAtX0 / 50) * realTimeScale; // Normalize to ~50 m/s baseline
+        } else {
+          // Manual speed control
+          advancement *= playbackSpeed;
+        }
 
-            // Base advancement for real-time playback (77 second lap, 4536 points)
-            // Need to advance 58.91 points/second, at 33.3 Hz animation = 1.767 points/frame
-            const baseAdvancement = 1.767;
+        let nextPos = currentPos + advancement;
+        if (nextPos >= processedData.totalPoints) {
+          nextPos = 0; // Loop back to start
+        } else if (nextPos < 0) {
+          nextPos = processedData.totalPoints - 1; // Loop back to end
+        }
 
-            // Modulate by car's speed relative to average (creates dynamic feel)
-            const speedRatio = currentSpeedMs / averageSpeedMs;
-            speedMultiplier = baseAdvancement * speedRatio;
-            // Clamp to reasonable range to prevent too extreme speeds
-            speedMultiplier = Math.max(0.3, Math.min(2.0, speedMultiplier));
-          } else {
-            // Use manual playback speed
-            speedMultiplier = playbackSpeed;
-          }
-
-          let nextPos = prevPos + 2 * speedMultiplier; // Move based on speed multiplier
-          if (nextPos >= processedData.totalPoints) {
-            nextPos = 0; // Loop back to start
-          } else if (nextPos < 0) {
-            nextPos = processedData.totalPoints - 1; // Loop back to end
-          }
-          return nextPos;
-        });
+        updatePosition(nextPos);
       };
 
-      const baseDelay = 30; // Base delay in milliseconds for smooth animation
-      const speedDelay = Math.max(10, baseDelay / Math.abs(playbackSpeed)); // Use absolute value for delay
+      // Use fixed interval for real-time mode, variable for manual mode
+      const animationInterval = dynamicSpeedMode
+        ? 30
+        : Math.max(10, 30 / Math.abs(playbackSpeed));
 
-      animationRef.current = setInterval(animate, speedDelay);
+      animationRef.current = setInterval(animate, animationInterval);
     }
   }, [
     playbackSpeed,
     dynamicSpeedMode,
+    realTimeScale,
     zoomLevel,
     isPlaying,
     processedData,
     updateVisibleData,
+    getCurrentPosition,
+    updatePosition,
   ]);
 
   // Note: Zoom changes during playback are handled automatically by the animation
@@ -613,7 +606,12 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
         {/* Main Transport Bar */}
         <View style={styles.transportBar}>
           {/* Reset Button */}
-          <TouchableOpacity style={styles.miniButton} onPress={resetPlayback}>
+          <TouchableOpacity
+            style={styles.miniButton}
+            onPress={() => {
+              resetPlayback();
+              setDynamicSpeedMode(false); // Switch to manual mode
+            }}>
             <Text style={styles.miniText}>🔄</Text>
           </TouchableOpacity>
 
@@ -621,17 +619,25 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
           <View style={styles.playbackGroup}>
             <TouchableOpacity
               style={styles.miniButton}
-              onPress={() =>
-                setPlaybackSpeed(Math.max(-5.0, playbackSpeed - 0.5))
-              }>
+              onPress={() => {
+                setDynamicSpeedMode(false); // Switch to manual mode
+                setPlaybackSpeed(Math.max(-5.0, playbackSpeed - 0.5));
+                if (!isPlaying) {
+                  startPlayback();
+                } // Start playback if not already playing
+              }}>
               <Text style={styles.miniText}>⏪</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.miniButton}
-              onPress={() =>
-                setCurrentPosition(prev => Math.max(0, prev - 50))
-              }>
+              onPress={() => {
+                setDynamicSpeedMode(false); // Switch to manual mode
+                updatePosition(Math.max(0, getCurrentPosition() - 50));
+                if (!isPlaying) {
+                  startPlayback();
+                } // Start playback if not already playing
+              }}>
               <Text style={styles.miniText}>⏮️</Text>
             </TouchableOpacity>
 
@@ -640,41 +646,86 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
                 styles.playButtonMini,
                 isPlaying && styles.playButtonActive,
               ]}
-              onPress={isPlaying ? stopPlayback : startPlayback}>
+              onPress={() => {
+                if (isPlaying) {
+                  stopPlayback();
+                } else {
+                  startPlayback();
+                  // Don't change mode - preserve current mode (manual or real-time)
+                }
+              }}>
               <Text style={styles.playText}>{isPlaying ? '⏸️' : '▶️'}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.miniButton}
-              onPress={() =>
-                setCurrentPosition(prev =>
-                  Math.min((processedData?.totalPoints || 0) - 1, prev + 50),
-                )
-              }>
+              onPress={() => {
+                setDynamicSpeedMode(false); // Switch to manual mode
+                updatePosition(
+                  Math.min(
+                    (processedData?.totalPoints || 0) - 1,
+                    getCurrentPosition() + 50,
+                  ),
+                );
+                if (!isPlaying) {
+                  startPlayback();
+                } // Start playback if not already playing
+              }}>
               <Text style={styles.miniText}>⏭️</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.miniButton}
-              onPress={() =>
-                setPlaybackSpeed(Math.min(5.0, playbackSpeed + 0.5))
-              }>
+              onPress={() => {
+                setDynamicSpeedMode(false); // Switch to manual mode
+                setPlaybackSpeed(Math.min(5.0, playbackSpeed + 0.5));
+                if (!isPlaying) {
+                  startPlayback();
+                } // Start playback if not already playing
+              }}>
               <Text style={styles.miniText}>⏩</Text>
             </TouchableOpacity>
           </View>
 
+          {/* Real Time Mode Toggle */}
+          <TouchableOpacity
+            style={[
+              styles.miniButton,
+              dynamicSpeedMode && styles.miniButtonActive,
+            ]}
+            onPress={() => {
+              const newMode = !dynamicSpeedMode;
+              setDynamicSpeedMode(newMode);
+              if (newMode && !isPlaying) {
+                startPlayback(); // Start playback when switching to real-time mode
+              }
+            }}>
+            <Text style={styles.miniText}>⏱️</Text>
+          </TouchableOpacity>
+
+          {/* Real Time Scale Controls */}
+          {dynamicSpeedMode && (
+            <View style={styles.scaleControls}>
+              <TouchableOpacity
+                style={styles.miniButton}
+                onPress={() =>
+                  setRealTimeScale(Math.max(0.5, realTimeScale - 0.1))
+                }>
+                <Text style={styles.miniText}>-</Text>
+              </TouchableOpacity>
+              <Text style={styles.scaleText}>{realTimeScale.toFixed(1)}x</Text>
+              <TouchableOpacity
+                style={styles.miniButton}
+                onPress={() =>
+                  setRealTimeScale(Math.min(2.0, realTimeScale + 0.1))
+                }>
+                <Text style={styles.miniText}>+</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* Speed & Position Display */}
           <View style={styles.statusGroup}>
-            <TouchableOpacity
-              style={[
-                styles.miniButton,
-                dynamicSpeedMode && styles.miniButtonActive,
-              ]}
-              onPress={() => setDynamicSpeedMode(!dynamicSpeedMode)}>
-              <Text style={styles.miniText}>
-                {dynamicSpeedMode ? '🚗' : '🎛️'}
-              </Text>
-            </TouchableOpacity>
             <Text
               style={[
                 styles.statusText,
@@ -682,20 +733,20 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
               ]}>
               {(() => {
                 if (dynamicSpeedMode && processedData) {
-                  // Use speed from current "now" position (x=0, left side) as requested
-                  const currentSpeedMs =
-                    processedData.raw[Math.floor(currentPosition)]?.speed || 50;
-                  const averageSpeedMs = 53.5; // Actual average speed from data analysis (m/s)
-                  const speedRatio = currentSpeedMs / averageSpeedMs;
-                  const clampedRatio = Math.max(0.3, Math.min(2.0, speedRatio));
-                  return clampedRatio.toFixed(1) + 'x';
+                  // Show current speed at x=0 for real-time mode
+                  const speedAtX0 =
+                    processedData.raw[Math.floor(getCurrentPosition())]
+                      ?.speed || 50;
+                  const effectiveRate = (speedAtX0 / 50) * realTimeScale;
+                  return effectiveRate.toFixed(1) + 'x';
                 }
                 return playbackSpeed.toFixed(1) + 'x';
               })()}
             </Text>
             <Text style={styles.statusText}>
               {Math.round(
-                (currentPosition / (processedData?.totalPoints || 1)) * 100,
+                (getCurrentPosition() / (processedData?.totalPoints || 1)) *
+                  100,
               )}
               %
             </Text>
@@ -809,7 +860,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
             {/* X-axis */}
             <View style={styles.xAxis}>
               {(() => {
-                // Generate labels: left is "Now" (most recent), right is oldest data
+                // Generate labels: left is "Now" (current), right is future data
                 const labels = [];
                 const numLabels = 5;
 
@@ -852,7 +903,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
               s => s.key === seriesKey,
             );
             const currentValue = processedData?.raw[
-              Math.floor(currentPosition)
+              Math.floor(getCurrentPosition())
             ]?.[seriesKey as keyof TimeSeriesData] as number;
             const color = seriesData?.color || '#FFFFFF';
 
@@ -889,16 +940,15 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
           <Text style={styles.statsText}>
             Dynamic Speed:{' '}
             {(() => {
-              // Use speed from current "now" position (x=0, left side) as requested
+              // Use speed from current "now" position (x=0, left side)
               const currentSpeedMs =
-                processedData.raw[Math.floor(currentPosition)]?.speed || 50;
+                processedData.raw[Math.floor(getCurrentPosition())]?.speed ||
+                50;
               const currentSpeedMph = currentSpeedMs * 2.23694; // Convert m/s to mph
-              const averageSpeedMs = 53.5; // Actual average speed from data analysis (m/s)
-              const speedRatio = currentSpeedMs / averageSpeedMs;
-              const clampedRatio = Math.max(0.3, Math.min(2.0, speedRatio));
+              const effectiveRate = (currentSpeedMs / 50) * realTimeScale;
               return `${currentSpeedMph.toFixed(
                 1,
-              )} mph → ${clampedRatio.toFixed(1)}x real-time`;
+              )} mph → ${effectiveRate.toFixed(1)}x real-time`;
             })()}
           </Text>
         )}
@@ -1029,6 +1079,19 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginHorizontal: 4,
     minWidth: 20,
+    textAlign: 'center',
+  },
+  scaleControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  scaleText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginHorizontal: 4,
+    minWidth: 30,
     textAlign: 'center',
   },
   chartContainer: {
