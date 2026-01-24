@@ -33,7 +33,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
   const [visibleData, setVisibleData] = useState<TimeSeriesData[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentPosition, setCurrentPosition] = useState(0); // Continuous position (0 to allData.length)
-  const [playbackSpeed, setPlaybackSpeed] = useState(1); // Speed multiplier
+  const [playbackSpeed, setPlaybackSpeed] = useState(1); // Speed multiplier (-5 to 5, negative = rewind)
   const [zoomLevel, setZoomLevel] = useState(3); // Zoom level 1-5 (higher = more zoomed in/less data)
   const animationRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -203,17 +203,19 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
       // Restart with new speed
       const animate = () => {
         setCurrentPosition(prevPos => {
-          let nextPos = prevPos + 0.5; // Smooth continuous movement
+          let nextPos = prevPos + 0.5 * playbackSpeed; // Move based on speed (includes direction and magnitude)
           if (nextPos >= allData.length) {
             nextPos = 0; // Loop back to start
+          } else if (nextPos < 0) {
+            nextPos = allData.length - 1; // Loop back to end
           }
           updateVisibleData(allData, nextPos);
           return nextPos;
         });
       };
 
-      const baseDelay = 30; // Base delay in milliseconds for smooth animation
-      const speedDelay = Math.max(5, baseDelay / playbackSpeed);
+      const baseDelay = 50; // Base delay in milliseconds for smooth animation
+      const speedDelay = Math.max(10, baseDelay / Math.abs(playbackSpeed)); // Use absolute value for delay
 
       animationRef.current = setInterval(animate, speedDelay);
     }
@@ -230,17 +232,19 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
       // Restart with new speed
       const animate = () => {
         setCurrentPosition(prevPos => {
-          let nextPos = prevPos + 0.5; // Smooth continuous movement
+          let nextPos = prevPos + 0.5 * playbackSpeed; // Move based on speed (includes direction and magnitude)
           if (nextPos >= allData.length) {
             nextPos = 0; // Loop back to start
+          } else if (nextPos < 0) {
+            nextPos = allData.length - 1; // Loop back to end
           }
           updateVisibleData(allData, nextPos);
           return nextPos;
         });
       };
 
-      const baseDelay = 30; // Base delay in milliseconds for smooth animation
-      const speedDelay = Math.max(5, baseDelay / playbackSpeed);
+      const baseDelay = 50; // Base delay in milliseconds for smooth animation
+      const speedDelay = Math.max(10, baseDelay / Math.abs(playbackSpeed)); // Use absolute value for delay
 
       animationRef.current = setInterval(animate, speedDelay);
     }
@@ -267,55 +271,91 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>{title}</Text>
-        <View style={styles.controls}>
-          <TouchableOpacity
-            style={[styles.button, !isPlaying && styles.buttonActive]}
-            onPress={isPlaying ? stopPlayback : startPlayback}>
-            <Text style={styles.buttonText}>
-              {isPlaying ? 'Pause' : 'Play'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.button} onPress={resetPlayback}>
-            <Text style={styles.buttonText}>Reset</Text>
-          </TouchableOpacity>
-        </View>
       </View>
 
-      {/* Playback Controls */}
-      <View style={styles.controlPanel}>
-        <View style={styles.sliderRow}>
-          <Text style={styles.sliderLabel}>
-            Speed: {playbackSpeed.toFixed(1)}x
-          </Text>
-          <View style={styles.buttonGroup}>
+      {/* Compact Controls */}
+      <View style={styles.compactControls}>
+        {/* Main Transport Bar */}
+        <View style={styles.transportBar}>
+          {/* Reset Button */}
+          <TouchableOpacity style={styles.miniButton} onPress={resetPlayback}>
+            <Text style={styles.miniText}>🔄</Text>
+          </TouchableOpacity>
+
+          {/* Playback Controls */}
+          <View style={styles.playbackGroup}>
             <TouchableOpacity
-              style={styles.smallButton}
+              style={styles.miniButton}
               onPress={() =>
-                setPlaybackSpeed(Math.max(0.5, playbackSpeed - 0.5))
+                setPlaybackSpeed(Math.max(-5.0, playbackSpeed - 0.5))
               }>
-              <Text style={styles.smallButtonText}>-</Text>
+              <Text style={styles.miniText}>⏪</Text>
             </TouchableOpacity>
+
             <TouchableOpacity
-              style={styles.smallButton}
+              style={styles.miniButton}
+              onPress={() =>
+                setCurrentPosition(prev => Math.max(0, prev - 10))
+              }>
+              <Text style={styles.miniText}>⏮️</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.playButtonMini,
+                isPlaying && styles.playButtonActive,
+              ]}
+              onPress={isPlaying ? stopPlayback : startPlayback}>
+              <Text style={styles.playText}>{isPlaying ? '⏸️' : '▶️'}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.miniButton}
+              onPress={() =>
+                setCurrentPosition(prev =>
+                  Math.min(allData.length - 1, prev + 10),
+                )
+              }>
+              <Text style={styles.miniText}>⏭️</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.miniButton}
               onPress={() =>
                 setPlaybackSpeed(Math.min(5.0, playbackSpeed + 0.5))
               }>
-              <Text style={styles.smallButtonText}>+</Text>
+              <Text style={styles.miniText}>⏩</Text>
             </TouchableOpacity>
           </View>
-        </View>
-        <View style={styles.sliderRow}>
-          <Text style={styles.sliderLabel}>Zoom: {zoomLevel}</Text>
-          <View style={styles.buttonGroup}>
+
+          {/* Speed & Position Display */}
+          <View style={styles.statusGroup}>
+            <Text
+              style={[
+                styles.statusText,
+                playbackSpeed < 0 && styles.statusTextReverse,
+              ]}>
+              {playbackSpeed.toFixed(1)}x
+            </Text>
+            <Text style={styles.statusText}>
+              {Math.round((currentPosition / allData.length) * 100)}%
+            </Text>
+          </View>
+
+          {/* Zoom Controls */}
+          <View style={styles.zoomGroup}>
             <TouchableOpacity
-              style={styles.smallButton}
+              style={styles.miniButton}
               onPress={() => setZoomLevel(Math.max(1, zoomLevel - 1))}>
-              <Text style={styles.smallButtonText}>-</Text>
+              <Text style={styles.miniText}>🔍-</Text>
             </TouchableOpacity>
+
+            <Text style={styles.zoomLevelText}>{zoomLevel}</Text>
+
             <TouchableOpacity
-              style={styles.smallButton}
+              style={styles.miniButton}
               onPress={() => setZoomLevel(Math.min(5, zoomLevel + 1))}>
-              <Text style={styles.smallButtonText}>+</Text>
+              <Text style={styles.miniText}>🔍+</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -466,8 +506,6 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
   },
@@ -476,58 +514,72 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#ffffff',
   },
-  controls: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  button: {
-    backgroundColor: '#333',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    minWidth: 60,
-    alignItems: 'center',
-  },
-  buttonActive: {
-    backgroundColor: '#2196f3',
-  },
-  buttonText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  controlPanel: {
+  compactControls: {
     backgroundColor: '#2a2a2a',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 16,
-  },
-  sliderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    borderRadius: 8,
+    padding: 8,
     marginBottom: 8,
   },
-  sliderLabel: {
-    color: '#cccccc',
-    fontSize: 12,
-    width: 80,
-  },
-  buttonGroup: {
+  transportBar: {
     flexDirection: 'row',
-    gap: 4,
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  smallButton: {
+  playbackGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  miniButton: {
     backgroundColor: '#333',
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    marginHorizontal: 2,
   },
-  smallButtonText: {
-    color: '#ffffff',
+  miniText: {
+    fontSize: 14,
+  },
+  playButtonMini: {
+    backgroundColor: '#4CAF50',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 4,
+  },
+  playText: {
     fontSize: 16,
+  },
+  statusGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 8,
+  },
+  statusText: {
+    color: '#ffffff',
+    fontSize: 12,
     fontWeight: 'bold',
+    marginHorizontal: 4,
+    minWidth: 35,
+    textAlign: 'center',
+  },
+  statusTextReverse: {
+    color: '#ff6b6b',
+  },
+  zoomGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  zoomLevelText: {
+    color: '#cccccc',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginHorizontal: 4,
+    minWidth: 20,
+    textAlign: 'center',
   },
   chartContainer: {
     alignItems: 'center',
