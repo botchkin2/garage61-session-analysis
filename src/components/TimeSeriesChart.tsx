@@ -335,22 +335,22 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
 
     const animate = () => {
       setCurrentPosition(prevPos => {
-        let speedMultiplier = 1;
+        let advancement = 1.767; // Real-time advancement: 58.91 points/sec at 33.3 Hz
 
         if (dynamicSpeedMode) {
-          // Use car's current speed for dynamic playback
-          const currentSpeed =
+          // Dynamic modulation based on car speed for real-time playback
+          // Use speed from current "now" position (x=0, left side) as requested
+          const currentSpeedMs =
             processedData.raw[Math.floor(prevPos)]?.speed || 50;
-          const averageSpeed = 51.48; // Average speed from data analysis
-          speedMultiplier = currentSpeed / averageSpeed;
-          // Clamp to reasonable range to prevent too extreme speeds
-          speedMultiplier = Math.max(0.3, Math.min(2.0, speedMultiplier));
+          const averageSpeedMs = 53.5;
+          const speedRatio = currentSpeedMs / averageSpeedMs;
+          advancement *= Math.max(0.3, Math.min(2.0, speedRatio));
         } else {
-          // Use manual playback speed
-          speedMultiplier = playbackSpeed;
+          // Manual speed control
+          advancement *= playbackSpeed;
         }
 
-        let nextPos = prevPos + 2 * speedMultiplier; // Move based on speed multiplier
+        let nextPos = prevPos + advancement;
         if (nextPos >= processedData.totalPoints) {
           nextPos = 0; // Loop back to start
         } else if (nextPos < 0) {
@@ -433,11 +433,19 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
           let speedMultiplier = 1;
 
           if (dynamicSpeedMode) {
-            // Use car's current speed for dynamic playback
-            const currentSpeed =
+            // Real-time dynamic playback: modulate base real-time speed by car speed
+            // Use speed from current "now" position (x=0, left side) as requested
+            const currentSpeedMs =
               processedData.raw[Math.floor(prevPos)]?.speed || 50;
-            const averageSpeed = 51.48; // Average speed from data analysis
-            speedMultiplier = currentSpeed / averageSpeed;
+            const averageSpeedMs = 53.5; // Actual average speed from data analysis (m/s)
+
+            // Base advancement for real-time playback (77 second lap, 4536 points)
+            // Need to advance 58.91 points/second, at 33.3 Hz animation = 1.767 points/frame
+            const baseAdvancement = 1.767;
+
+            // Modulate by car's speed relative to average (creates dynamic feel)
+            const speedRatio = currentSpeedMs / averageSpeedMs;
+            speedMultiplier = baseAdvancement * speedRatio;
             // Clamp to reasonable range to prevent too extreme speeds
             speedMultiplier = Math.max(0.3, Math.min(2.0, speedMultiplier));
           } else {
@@ -482,11 +490,19 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
           let speedMultiplier = 1;
 
           if (dynamicSpeedMode) {
-            // Use car's current speed for dynamic playback
-            const currentSpeed =
+            // Real-time dynamic playback: modulate base real-time speed by car speed
+            // Use speed from current "now" position (x=0, left side) as requested
+            const currentSpeedMs =
               processedData.raw[Math.floor(prevPos)]?.speed || 50;
-            const averageSpeed = 51.48; // Average speed from data analysis
-            speedMultiplier = currentSpeed / averageSpeed;
+            const averageSpeedMs = 53.5; // Actual average speed from data analysis (m/s)
+
+            // Base advancement for real-time playback (77 second lap, 4536 points)
+            // Need to advance 58.91 points/second, at 33.3 Hz animation = 1.767 points/frame
+            const baseAdvancement = 1.767;
+
+            // Modulate by car's speed relative to average (creates dynamic feel)
+            const speedRatio = currentSpeedMs / averageSpeedMs;
+            speedMultiplier = baseAdvancement * speedRatio;
             // Clamp to reasonable range to prevent too extreme speeds
             speedMultiplier = Math.max(0.3, Math.min(2.0, speedMultiplier));
           } else {
@@ -666,14 +682,13 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
               ]}>
               {(() => {
                 if (dynamicSpeedMode && processedData) {
-                  const currentSpeed =
+                  // Use speed from current "now" position (x=0, left side) as requested
+                  const currentSpeedMs =
                     processedData.raw[Math.floor(currentPosition)]?.speed || 50;
-                  const averageSpeed = 51.48;
-                  const speedMultiplier = Math.max(
-                    0.3,
-                    Math.min(2.0, currentSpeed / averageSpeed),
-                  );
-                  return speedMultiplier.toFixed(1) + 'x';
+                  const averageSpeedMs = 53.5; // Actual average speed from data analysis (m/s)
+                  const speedRatio = currentSpeedMs / averageSpeedMs;
+                  const clampedRatio = Math.max(0.3, Math.min(2.0, speedRatio));
+                  return clampedRatio.toFixed(1) + 'x';
                 }
                 return playbackSpeed.toFixed(1) + 'x';
               })()}
@@ -848,7 +863,9 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
                 :{' '}
                 {seriesKey === 'rpm' || seriesKey === 'speed'
                   ? currentValue
-                    ? Math.round(currentValue)
+                    ? seriesKey === 'speed'
+                      ? Math.round(currentValue * 2.23694) // Convert m/s to mph
+                      : Math.round(currentValue)
                     : 0
                   : currentValue
                   ? currentValue.toFixed(2)
@@ -856,7 +873,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
                 {seriesKey === 'rpm'
                   ? ' RPM'
                   : seriesKey === 'speed'
-                  ? ' km/h'
+                  ? ' mph'
                   : seriesKey === 'gear'
                   ? ''
                   : '%'}
@@ -872,16 +889,16 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
           <Text style={styles.statsText}>
             Dynamic Speed:{' '}
             {(() => {
-              const currentSpeed =
+              // Use speed from current "now" position (x=0, left side) as requested
+              const currentSpeedMs =
                 processedData.raw[Math.floor(currentPosition)]?.speed || 50;
-              const averageSpeed = 51.48;
-              const speedMultiplier = Math.max(
-                0.3,
-                Math.min(2.0, currentSpeed / averageSpeed),
-              );
-              return `${currentSpeed.toFixed(
+              const currentSpeedMph = currentSpeedMs * 2.23694; // Convert m/s to mph
+              const averageSpeedMs = 53.5; // Actual average speed from data analysis (m/s)
+              const speedRatio = currentSpeedMs / averageSpeedMs;
+              const clampedRatio = Math.max(0.3, Math.min(2.0, speedRatio));
+              return `${currentSpeedMph.toFixed(
                 1,
-              )} km/h → ${speedMultiplier.toFixed(1)}x playback`;
+              )} mph → ${clampedRatio.toFixed(1)}x real-time`;
             })()}
           </Text>
         )}
