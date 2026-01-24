@@ -15,6 +15,12 @@ interface TimeSeriesData {
   value: number;
   label: string;
   lapDistPct: number;
+  brake: number;
+  throttle: number;
+  rpm: number;
+  steeringWheelAngle: number;
+  speed: number;
+  gear: number;
 }
 
 interface TimeSeriesChartProps {
@@ -25,7 +31,7 @@ interface TimeSeriesChartProps {
 }
 
 export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
-  title = 'Real-Time Brake Pressure',
+  title = 'Real-Time Data',
   dataPoints = 20,
   onDataUpdate,
 }) => {
@@ -35,6 +41,8 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
   const [currentPosition, setCurrentPosition] = useState(0); // Continuous position (0 to allData.length)
   const [playbackSpeed, setPlaybackSpeed] = useState(1); // Speed multiplier (-5 to 5, negative = rewind)
   const [zoomLevel, setZoomLevel] = useState(3); // Zoom level 1-5 (higher = more zoomed in/less data)
+  const [selectedSeries, setSelectedSeries] = useState<string[]>(['brake']); // Selected data series to display (multi-select)
+  const [multiSeriesData, setMultiSeriesData] = useState<any[]>([]); // Normalized data for multiple series
   const animationRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load CSV data
@@ -49,21 +57,56 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
 
       const lapDistPctIndex = headers.indexOf('LapDistPct');
       const brakeIndex = headers.indexOf('Brake');
+      const throttleIndex = headers.indexOf('Throttle');
+      const rpmIndex = headers.indexOf('RPM');
+      const steeringIndex = headers.indexOf('SteeringWheelAngle');
+      const speedIndex = headers.indexOf('Speed');
+      const gearIndex = headers.indexOf('Gear');
 
       const parsedData: TimeSeriesData[] = [];
 
       for (let i = 1; i < lines.length; i++) {
         const values = lines[i].split(',');
-        if (values.length > Math.max(lapDistPctIndex, brakeIndex)) {
+        if (
+          values.length >
+          Math.max(
+            lapDistPctIndex,
+            brakeIndex,
+            throttleIndex,
+            rpmIndex,
+            steeringIndex,
+            speedIndex,
+            gearIndex,
+          )
+        ) {
           const lapDistPct = parseFloat(values[lapDistPctIndex]);
           const brake = parseFloat(values[brakeIndex]);
+          const throttle = parseFloat(values[throttleIndex]);
+          const rpm = parseFloat(values[rpmIndex]);
+          const steeringWheelAngle = parseFloat(values[steeringIndex]);
+          const speed = parseFloat(values[speedIndex]);
+          const gear = parseFloat(values[gearIndex]);
 
-          if (!isNaN(lapDistPct) && !isNaN(brake)) {
+          if (
+            !isNaN(lapDistPct) &&
+            !isNaN(brake) &&
+            !isNaN(throttle) &&
+            !isNaN(rpm) &&
+            !isNaN(steeringWheelAngle) &&
+            !isNaN(speed) &&
+            !isNaN(gear)
+          ) {
             parsedData.push({
               timestamp: new Date(),
-              value: brake,
+              value: brake, // Default to brake, will be updated based on selected series
               label: `${(lapDistPct * 100).toFixed(2)}%`,
               lapDistPct: lapDistPct * 100, // Store as percentage for easier calculations
+              brake: brake,
+              throttle: throttle,
+              rpm: rpm,
+              steeringWheelAngle: steeringWheelAngle,
+              speed: speed,
+              gear: gear,
             });
           }
         }
@@ -143,7 +186,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
 
     const animate = () => {
       setCurrentPosition(prevPos => {
-        let nextPos = prevPos + 0.5; // Smooth continuous movement
+        let nextPos = prevPos + 2; // Smooth continuous movement
         if (nextPos >= allData.length) {
           nextPos = 0; // Loop back to start
         }
@@ -192,6 +235,60 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
     }
   }, [zoomLevel, allData, currentPosition, updateVisibleData]);
 
+  // Ensure data is properly set up when series selection changes
+  useEffect(() => {
+    if (allData.length > 0) {
+      createMultiSeriesData();
+    }
+  }, [selectedSeries, allData, createMultiSeriesData]);
+
+  // Create normalized multi-series data
+  const createMultiSeriesData = useCallback(() => {
+    if (allData.length === 0 || selectedSeries.length === 0) {
+      return;
+    }
+
+    const seriesColors = {
+      brake: '#FF4444',
+      throttle: '#44FF44',
+      rpm: '#4444FF',
+      steeringWheelAngle: '#FFFF44',
+      speed: '#FF44FF',
+      gear: '#44FFFF',
+    };
+
+    const multiData = selectedSeries.map(seriesKey => {
+      // Calculate min/max for this series to normalize
+      const values = allData.map(
+        item => item[seriesKey as keyof TimeSeriesData] as number,
+      );
+      const minVal = Math.min(...values);
+      const maxVal = Math.max(...values);
+      const range = maxVal - minVal;
+
+      return {
+        key: seriesKey,
+        color:
+          seriesColors[seriesKey as keyof typeof seriesColors] || '#FFFFFF',
+        data: allData.map(item => ({
+          ...item,
+          normalizedValue:
+            range > 0
+              ? ((item[seriesKey as keyof TimeSeriesData] as number) - minVal) /
+                range
+              : 0,
+        })),
+      };
+    });
+
+    setMultiSeriesData(multiData);
+  }, [allData, selectedSeries]);
+
+  // Update multi-series data when selection changes
+  useEffect(() => {
+    createMultiSeriesData();
+  }, [createMultiSeriesData]);
+
   // Restart animation when speed changes during playback
   useEffect(() => {
     if (isPlaying && allData.length > 0) {
@@ -203,7 +300,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
       // Restart with new speed
       const animate = () => {
         setCurrentPosition(prevPos => {
-          let nextPos = prevPos + 0.5 * playbackSpeed; // Move based on speed (includes direction and magnitude)
+          let nextPos = prevPos + 2 * playbackSpeed; // Move based on speed (includes direction and magnitude)
           if (nextPos >= allData.length) {
             nextPos = 0; // Loop back to start
           } else if (nextPos < 0) {
@@ -214,7 +311,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
         });
       };
 
-      const baseDelay = 50; // Base delay in milliseconds for smooth animation
+      const baseDelay = 30; // Base delay in milliseconds for smooth animation
       const speedDelay = Math.max(10, baseDelay / Math.abs(playbackSpeed)); // Use absolute value for delay
 
       animationRef.current = setInterval(animate, speedDelay);
@@ -232,7 +329,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
       // Restart with new speed
       const animate = () => {
         setCurrentPosition(prevPos => {
-          let nextPos = prevPos + 0.5 * playbackSpeed; // Move based on speed (includes direction and magnitude)
+          let nextPos = prevPos + 2 * playbackSpeed; // Move based on speed (includes direction and magnitude)
           if (nextPos >= allData.length) {
             nextPos = 0; // Loop back to start
           } else if (nextPos < 0) {
@@ -243,7 +340,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
         });
       };
 
-      const baseDelay = 50; // Base delay in milliseconds for smooth animation
+      const baseDelay = 30; // Base delay in milliseconds for smooth animation
       const speedDelay = Math.max(10, baseDelay / Math.abs(playbackSpeed)); // Use absolute value for delay
 
       animationRef.current = setInterval(animate, speedDelay);
@@ -270,7 +367,55 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.title}>
+          {title} -{' '}
+          {selectedSeries.length === 1
+            ? selectedSeries[0].charAt(0).toUpperCase() +
+              selectedSeries[0].slice(1).replace(/([A-Z])/g, ' $1')
+            : `${selectedSeries.length} Series`}
+        </Text>
+        <View style={styles.seriesSelector}>
+          <Text style={styles.seriesLabel}>Data:</Text>
+          {[
+            {key: 'brake', label: 'Brake'},
+            {key: 'throttle', label: 'Throttle'},
+            {key: 'rpm', label: 'RPM'},
+            {key: 'steeringWheelAngle', label: 'Steering'},
+            {key: 'speed', label: 'Speed'},
+            {key: 'gear', label: 'Gear'},
+          ].map(series => {
+            const isSelected = selectedSeries.includes(series.key);
+            return (
+              <TouchableOpacity
+                key={series.key}
+                style={[
+                  styles.seriesButton,
+                  isSelected && styles.seriesButtonActive,
+                ]}
+                onPress={() => {
+                  if (isSelected) {
+                    // Remove from selection (but keep at least one)
+                    if (selectedSeries.length > 1) {
+                      setSelectedSeries(
+                        selectedSeries.filter(s => s !== series.key),
+                      );
+                    }
+                  } else {
+                    // Add to selection
+                    setSelectedSeries([...selectedSeries, series.key]);
+                  }
+                }}>
+                <Text
+                  style={[
+                    styles.seriesButtonText,
+                    isSelected && styles.seriesButtonTextActive,
+                  ]}>
+                  {isSelected ? '●' : '○'} {series.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
 
       {/* Compact Controls */}
@@ -295,7 +440,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
             <TouchableOpacity
               style={styles.miniButton}
               onPress={() =>
-                setCurrentPosition(prev => Math.max(0, prev - 10))
+                setCurrentPosition(prev => Math.max(0, prev - 50))
               }>
               <Text style={styles.miniText}>⏮️</Text>
             </TouchableOpacity>
@@ -313,7 +458,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
               style={styles.miniButton}
               onPress={() =>
                 setCurrentPosition(prev =>
-                  Math.min(allData.length - 1, prev + 10),
+                  Math.min(allData.length - 1, prev + 50),
                 )
               }>
               <Text style={styles.miniText}>⏭️</Text>
@@ -389,54 +534,83 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
 
             {/* Data lines */}
             <View style={styles.lineChart}>
-              {/* Draw connecting lines between all visible points */}
-              {displayData.length > 1 &&
-                displayData.map((item, index) => {
-                  if (index === 0) {
-                    return null;
-                  }
-                  const prevItem = displayData[index - 1];
+              {/* Draw multiple series overlay */}
+              {multiSeriesData.map(series => {
+                // Get visible data for this series (same window as single series)
+                const startIdx = Math.max(
+                  0,
+                  Math.floor(currentPosition) -
+                    Math.floor(
+                      (series.data.length * (15 - (zoomLevel - 1) * 3.25)) /
+                        100 /
+                        2,
+                    ),
+                );
+                const endIdx = Math.min(
+                  series.data.length,
+                  Math.floor(currentPosition) +
+                    Math.floor(
+                      (series.data.length * (15 - (zoomLevel - 1) * 3.25)) /
+                        100 /
+                        2,
+                    ),
+                );
+                const visibleSeriesData = series.data.slice(startIdx, endIdx);
 
-                  // Data slides right-to-left: leftmost (x=0) is "now", rightmost is historical data
-                  // displayData[0] at left (x=0), displayData[last] at right (x=chartWidth)
-                  const totalPoints = displayData.length;
-                  const x1 = ((index - 1) / (totalPoints - 1)) * chartWidth;
-                  const x2 = (index / (totalPoints - 1)) * chartWidth;
+                return visibleSeriesData.length > 1
+                  ? visibleSeriesData.map((item: any, index: number) => {
+                      if (index === 0) {
+                        return null;
+                      }
 
-                  // Y position based on value (0-1 mapped to chart height, inverted)
-                  const y1 = chartHeight - prevItem.value * chartHeight;
-                  const y2 = chartHeight - item.value * chartHeight;
+                      const prevItem = visibleSeriesData[index - 1];
+                      const totalPoints = visibleSeriesData.length;
 
-                  const length = Math.sqrt(
-                    Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2),
-                  );
-                  if (length < 1) {
-                    return null;
-                  } // Skip very short lines
+                      // Position based on index in visible data
+                      const x1 = ((index - 1) / (totalPoints - 1)) * chartWidth;
+                      const x2 = (index / (totalPoints - 1)) * chartWidth;
 
-                  const angle = Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI);
-                  const centerX = x1 + (x2 - x1) / 2;
-                  const centerY = y1 + (y2 - y1) / 2;
+                      // Y position based on normalized value
+                      const y1 =
+                        chartHeight - prevItem.normalizedValue * chartHeight;
+                      const y2 =
+                        chartHeight - item.normalizedValue * chartHeight;
 
-                  return (
-                    <View
-                      key={`line-${index}`}
-                      style={[
-                        styles.lineSegment,
-                        {
-                          left: centerX - length / 2,
-                          top: Math.max(
-                            0,
-                            Math.min(chartHeight - 2, centerY - 1),
-                          ),
-                          width: length,
-                          transform: [{rotate: `${angle}deg`}],
-                          backgroundColor: isPlaying ? '#2196f3' : '#666',
-                        },
-                      ]}
-                    />
-                  );
-                })}
+                      const length = Math.sqrt(
+                        Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2),
+                      );
+                      if (length < 1) {
+                        return null;
+                      }
+
+                      const angle =
+                        Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI);
+                      const centerX = x1 + (x2 - x1) / 2;
+                      const centerY = y1 + (y2 - y1) / 2;
+
+                      return (
+                        <View
+                          key={`line-${series.key}-${index}`}
+                          style={[
+                            [
+                              styles.lineSegment,
+                              {
+                                left: centerX - length / 2,
+                                top: Math.max(
+                                  0,
+                                  Math.min(chartHeight - 2, centerY - 1),
+                                ),
+                                width: length,
+                                transform: [{rotate: `${angle}deg`}],
+                                backgroundColor: series.color,
+                              },
+                            ],
+                          ]}
+                        />
+                      );
+                    })
+                  : null;
+              })}
 
               {/* "Now" indicator at x=0 (leftmost position) */}
               <View style={[styles.nowIndicator, {height: chartHeight}]} />
@@ -480,13 +654,42 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
 
       <View style={styles.stats}>
         <Text style={styles.statsText}>
-          Now: {currentLapPct.toFixed(1)}% lap
+          Position: {currentLapPct.toFixed(1)}% lap
         </Text>
+        <View style={styles.currentValues}>
+          {selectedSeries.map(seriesKey => {
+            const seriesData = multiSeriesData.find(s => s.key === seriesKey);
+            const currentValue = allData[Math.floor(currentPosition)]?.[
+              seriesKey as keyof TimeSeriesData
+            ] as number;
+            const color = seriesData?.color || '#FFFFFF';
+
+            return (
+              <Text key={seriesKey} style={[styles.seriesValueText, {color}]}>
+                {seriesKey.charAt(0).toUpperCase() +
+                  seriesKey.slice(1).replace(/([A-Z])/g, ' $1')}
+                :{' '}
+                {seriesKey === 'rpm' || seriesKey === 'speed'
+                  ? currentValue
+                    ? Math.round(currentValue)
+                    : 0
+                  : currentValue
+                  ? currentValue.toFixed(2)
+                  : '0.00'}
+                {seriesKey === 'rpm'
+                  ? ' RPM'
+                  : seriesKey === 'speed'
+                  ? ' km/h'
+                  : seriesKey === 'gear'
+                  ? ''
+                  : '%'}
+              </Text>
+            );
+          })}
+        </View>
         <Text style={styles.statsText}>
-          Brake: {currentData ? (currentData.value * 100).toFixed(1) : '0.0'}%
-        </Text>
-        <Text style={styles.statsText}>
-          Showing: {visibleData.length} points
+          Series: {selectedSeries.length} | Points:{' '}
+          {multiSeriesData[0]?.data.length || 0}
         </Text>
       </View>
     </View>
@@ -508,6 +711,36 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     marginBottom: 16,
+  },
+  seriesSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    flexWrap: 'wrap',
+  },
+  seriesLabel: {
+    color: '#cccccc',
+    fontSize: 14,
+    marginRight: 8,
+  },
+  seriesButton: {
+    backgroundColor: '#333',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginHorizontal: 2,
+    marginVertical: 2,
+  },
+  seriesButtonActive: {
+    backgroundColor: '#2196F3',
+  },
+  seriesButtonText: {
+    color: '#cccccc',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  seriesButtonTextActive: {
+    color: '#ffffff',
   },
   title: {
     fontSize: 18,
@@ -672,5 +905,16 @@ const styles = StyleSheet.create({
   statsText: {
     color: '#cccccc',
     fontSize: 12,
+  },
+  currentValues: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginVertical: 4,
+  },
+  seriesValueText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    marginRight: 12,
+    marginBottom: 2,
   },
 });
