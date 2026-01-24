@@ -12,4 +12,5 @@ export {
   MetricCard,
   LapTime,
   RacingDivider,
+  TimeRangeSelector,
 } from './RacingUI';

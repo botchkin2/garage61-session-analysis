@@ -18,6 +18,7 @@ import {
   MetricCard,
   LapTime,
   RacingDivider,
+  TimeRangeSelector,
 } from '@/components';
 import {RacingTheme} from '@/theme';
 
@@ -45,6 +46,7 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
   const [error, setError] = useState<string | null>(null);
   const [eventGroups, setEventGroups] = useState<EventGroup[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedTimeRange, setSelectedTimeRange] = useState<number>(1); // Default to 1 day (24h)
   const [fadeAnim] = useState(new Animated.Value(0));
 
   // Group laps by event ID with racing metrics
@@ -122,8 +124,6 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
         }
         setError(null);
 
-        console.log('LapList: Starting to load laps...');
-
         // Test API connectivity
         const canConnect = await apiClient.ping();
         if (!canConnect) {
@@ -132,10 +132,10 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
           );
         }
 
-        // Get laps from last 24 hours
+        // Get laps from selected time range
         const response: LapsResponse = await apiClient.getLaps({
           limit: 200,
-          age: 1,
+          age: selectedTimeRange,
           drivers: 'me',
           group: 'none',
         });
@@ -146,6 +146,7 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
           'laps out of',
           response.total,
         );
+
         setLaps(response.items);
 
         // Group laps by event with enhanced metrics
@@ -162,7 +163,7 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
         setRefreshing(false);
       }
     },
-    [groupLapsByEvent],
+    [groupLapsByEvent, selectedTimeRange],
   );
 
   const handleRefresh = () => {
@@ -178,7 +179,7 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
       duration: RacingTheme.animations.normal,
       useNativeDriver: true,
     }).start();
-  }, [fadeAnim, loadLaps]);
+  }, [fadeAnim, loadLaps, selectedTimeRange]);
 
   const formatLapTime = (seconds: number): string => {
     const minutes = Math.floor(seconds / 60);
@@ -188,6 +189,19 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
 
   const formatDate = (dateString: string): string => {
     return new Date(dateString).toLocaleDateString();
+  };
+
+  const formatTimeRange = (days: number): string => {
+    if (days === 1) {
+      return 'Last 24 Hours';
+    }
+    if (days === 3) {
+      return 'Last 3 Days';
+    }
+    if (days === 7) {
+      return 'Last 7 Days';
+    }
+    return `Last ${days} Days`;
   };
 
   const getSessionTypeName = (type: number): string => {
@@ -292,9 +306,16 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
             <View style={styles.dashboardHeader}>
               <Text style={styles.dashboardTitle}>RACING ANALYTICS</Text>
               <Text style={styles.dashboardSubtitle}>
-                Last 24 Hours Performance
+                {formatTimeRange(selectedTimeRange)} Performance
               </Text>
             </View>
+
+            {/* Time Range Selector */}
+            <TimeRangeSelector
+              selectedRange={selectedTimeRange}
+              onRangeChange={setSelectedTimeRange}
+              style={styles.timeRangeSelector}
+            />
 
             {/* Performance Metrics Grid */}
             <View style={styles.metricsGrid}>
@@ -447,7 +468,8 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
                   <Text style={styles.emptyIcon}>🏁</Text>
                   <Text style={styles.emptyTitle}>NO RACING DATA</Text>
                   <Text style={styles.emptyMessage}>
-                    No laps recorded in the last 24 hours.{'\n'}
+                    No laps recorded in the{' '}
+                    {formatTimeRange(selectedTimeRange).toLowerCase()}.{'\n'}
                     Hit the track and start analyzing your performance!
                   </Text>
                 </RacingCard>
@@ -504,6 +526,10 @@ const styles = StyleSheet.create({
     color: RacingTheme.colors.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 1,
+  },
+  timeRangeSelector: {
+    marginBottom: RacingTheme.spacing.lg,
+    alignSelf: 'center',
   },
   metricsGrid: {
     flexDirection: 'row',

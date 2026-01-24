@@ -152,6 +152,46 @@ export const LapTime: React.FC<LapTimeProps> = ({
   );
 };
 
+interface TimeRangeSelectorProps {
+  selectedRange: number; // in days
+  onRangeChange: (days: number) => void;
+  style?: ViewStyle;
+}
+
+export const TimeRangeSelector: React.FC<TimeRangeSelectorProps> = ({
+  selectedRange,
+  onRangeChange,
+  style,
+}) => {
+  const ranges = [
+    {label: '24H', days: 1},
+    {label: '3D', days: 3},
+    {label: '7D', days: 7},
+  ];
+
+  return (
+    <View style={[styles.timeRangeContainer, style]}>
+      {ranges.map(range => (
+        <TouchableOpacity
+          key={range.days}
+          style={[
+            styles.timeRangeButton,
+            selectedRange === range.days && styles.timeRangeButtonActive,
+          ]}
+          onPress={() => onRangeChange(range.days)}>
+          <Text
+            style={[
+              styles.timeRangeText,
+              selectedRange === range.days && styles.timeRangeTextActive,
+            ]}>
+            {range.label}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+};
+
 interface DividerProps {
   style?: ViewStyle;
 }
@@ -268,5 +308,36 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: RacingTheme.colors.surfaceElevated,
     marginVertical: RacingTheme.spacing.md,
+  },
+  timeRangeContainer: {
+    flexDirection: 'row',
+    backgroundColor: RacingTheme.colors.surface,
+    borderRadius: RacingTheme.borderRadius.md,
+    padding: RacingTheme.spacing.xs,
+    borderWidth: 1,
+    borderColor: RacingTheme.colors.surfaceElevated,
+    ...RacingTheme.shadows.sm,
+  },
+  timeRangeButton: {
+    flex: 1,
+    paddingVertical: RacingTheme.spacing.sm,
+    paddingHorizontal: RacingTheme.spacing.md,
+    borderRadius: RacingTheme.borderRadius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timeRangeButtonActive: {
+    backgroundColor: RacingTheme.colors.primary,
+    ...RacingTheme.shadows.sm,
+  },
+  timeRangeText: {
+    fontSize: RacingTheme.typography.caption,
+    fontWeight: RacingTheme.typography.medium,
+    color: RacingTheme.colors.textSecondary,
+    letterSpacing: 0.5,
+  },
+  timeRangeTextActive: {
+    color: RacingTheme.colors.background,
+    fontWeight: RacingTheme.typography.bold,
   },
 });

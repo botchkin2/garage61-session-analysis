@@ -23,6 +23,27 @@ interface TimeSeriesData {
   gear: number;
 }
 
+interface NormalizedSeriesData {
+  key: string;
+  color: string;
+  minVal: number;
+  maxVal: number;
+  range: number;
+  normalizedData: Float32Array; // Use Float32Array for better memory efficiency
+}
+
+interface ProcessedData {
+  raw: TimeSeriesData[];
+  normalized: NormalizedSeriesData[];
+  totalPoints: number;
+}
+
+interface VisibleDataInfo {
+  data: TimeSeriesData[];
+  startIdx: number;
+  endIdx: number;
+}
+
 interface TimeSeriesChartProps {
   title?: string;
   dataPoints?: number;
@@ -35,112 +56,58 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
   dataPoints = 20,
   onDataUpdate,
 }) => {
-  const [allData, setAllData] = useState<TimeSeriesData[]>([]);
-  const [visibleData, setVisibleData] = useState<TimeSeriesData[]>([]);
+  const [processedData, setProcessedData] = useState<ProcessedData | null>(
+    null,
+  );
+  const [visibleData, setVisibleData] = useState<VisibleDataInfo>({
+    data: [],
+    startIdx: 0,
+    endIdx: 0,
+  });
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentPosition, setCurrentPosition] = useState(0); // Continuous position (0 to allData.length)
   const [playbackSpeed, setPlaybackSpeed] = useState(1); // Speed multiplier (-5 to 5, negative = rewind)
   const [zoomLevel, setZoomLevel] = useState(3); // Zoom level 1-5 (higher = more zoomed in/less data)
   const [selectedSeries, setSelectedSeries] = useState<string[]>(['brake']); // Selected data series to display (multi-select)
-  const [multiSeriesData, setMultiSeriesData] = useState<any[]>([]); // Normalized data for multiple series
   const animationRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load CSV data
-  const loadCsvData = useCallback(async () => {
-    try {
-      const response = await axios.get('/sample_data/sample_lap.csv');
-      const csvText = response.data as string;
-      const lines = csvText
-        .split('\n')
-        .filter((line: string) => line.trim() !== '');
-      const headers = lines[0].split(',');
-
-      const lapDistPctIndex = headers.indexOf('LapDistPct');
-      const brakeIndex = headers.indexOf('Brake');
-      const throttleIndex = headers.indexOf('Throttle');
-      const rpmIndex = headers.indexOf('RPM');
-      const steeringIndex = headers.indexOf('SteeringWheelAngle');
-      const speedIndex = headers.indexOf('Speed');
-      const gearIndex = headers.indexOf('Gear');
-
-      const parsedData: TimeSeriesData[] = [];
-
-      for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',');
-        if (
-          values.length >
-          Math.max(
-            lapDistPctIndex,
-            brakeIndex,
-            throttleIndex,
-            rpmIndex,
-            steeringIndex,
-            speedIndex,
-            gearIndex,
-          )
-        ) {
-          const lapDistPct = parseFloat(values[lapDistPctIndex]);
-          const brake = parseFloat(values[brakeIndex]);
-          const throttle = parseFloat(values[throttleIndex]);
-          const rpm = parseFloat(values[rpmIndex]);
-          const steeringWheelAngle = parseFloat(values[steeringIndex]);
-          const speed = parseFloat(values[speedIndex]);
-          const gear = parseFloat(values[gearIndex]);
-
-          if (
-            !isNaN(lapDistPct) &&
-            !isNaN(brake) &&
-            !isNaN(throttle) &&
-            !isNaN(rpm) &&
-            !isNaN(steeringWheelAngle) &&
-            !isNaN(speed) &&
-            !isNaN(gear)
-          ) {
-            parsedData.push({
-              timestamp: new Date(),
-              value: brake, // Default to brake, will be updated based on selected series
-              label: `${(lapDistPct * 100).toFixed(2)}%`,
-              lapDistPct: lapDistPct * 100, // Store as percentage for easier calculations
-              brake: brake,
-              throttle: throttle,
-              rpm: rpm,
-              steeringWheelAngle: steeringWheelAngle,
-              speed: speed,
-              gear: gear,
-            });
-          }
-        }
-      }
-
-      // Sort by LapDistPct to ensure proper ordering
-      parsedData.sort((a, b) => a.lapDistPct - b.lapDistPct);
-
-      console.log(`Loaded ${parsedData.length} data points from CSV`);
-      console.log(
-        `Brake range: ${Math.min(...parsedData.map(d => d.value)).toFixed(
-          4,
-        )} - ${Math.max(...parsedData.map(d => d.value)).toFixed(4)}`,
-      );
-      setAllData(parsedData);
-      updateVisibleData(parsedData, 0);
-      onDataUpdate?.(parsedData);
-    } catch (error) {
-      console.error('Failed to load CSV data, using generated data:', error);
-      initializeData();
-    }
-  }, [updateVisibleData, onDataUpdate, initializeData]);
+  // Cache for visible data calculations to avoid redundant computations
+  const visibleDataCache = useRef<{
+    position: number;
+    zoomLevel: number;
+    totalPoints: number;
+    data: TimeSeriesData[];
+    startIdx: number;
+    endIdx: number;
+  } | null>(null);
 
   // Update visible data based on current position and zoom level
   // Data slides continuously from right to left: "now" is always at left (x=0)
   const updateVisibleData = useCallback(
     (data: TimeSeriesData[], position: number) => {
-      if (data.length === 0) {
+      if (!data || data.length === 0) {
+        return;
+      }
+
+      const totalPoints = data.length;
+
+      // Check cache first
+      if (
+        visibleDataCache.current &&
+        visibleDataCache.current.position === position &&
+        visibleDataCache.current.zoomLevel === zoomLevel &&
+        visibleDataCache.current.totalPoints === totalPoints
+      ) {
+        setVisibleData({
+          data: visibleDataCache.current.data,
+          startIdx: visibleDataCache.current.startIdx,
+          endIdx: visibleDataCache.current.endIdx,
+        });
         return;
       }
 
       // Calculate the range of data to show based on zoom level
       // Zoom 1-5 maps to 15%-2% of data visible (higher zoom = less data = more zoomed in)
-      const totalPoints = data.length;
       const dataPercentage = 15 - (zoomLevel - 1) * 3.25; // 15% at zoom 1, 2% at zoom 5
       const pointsToShow = Math.max(
         50,
@@ -153,7 +120,18 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
       const startIdx = Math.max(0, endIdx - pointsToShow + 1);
 
       const visiblePoints = data.slice(startIdx, endIdx + 1);
-      setVisibleData(visiblePoints);
+
+      // Update cache
+      visibleDataCache.current = {
+        position,
+        zoomLevel,
+        totalPoints,
+        data: visiblePoints,
+        startIdx,
+        endIdx,
+      };
+
+      setVisibleData({data: visiblePoints, startIdx, endIdx});
     },
     [zoomLevel],
   );
@@ -169,6 +147,12 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
         value: Math.random(),
         label: `${lapPct.toFixed(2)}%`,
         lapDistPct: lapPct,
+        brake: Math.random(),
+        throttle: Math.random(),
+        rpm: Math.random() * 10000,
+        steeringWheelAngle: Math.random() * 360 - 180,
+        speed: Math.random() * 200,
+        gear: Math.floor(Math.random() * 6) + 1,
       });
     }
     setAllData(initialData);
@@ -176,9 +160,173 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
     onDataUpdate?.(initialData);
   }, [dataPoints, updateVisibleData, onDataUpdate]);
 
+  // Load CSV data with optimized chunked processing
+  const loadCsvData = useCallback(async () => {
+    try {
+      const response = await axios.get('/sample_data/sample_lap.csv');
+      const csvText = response.data as string;
+      const allLines = csvText
+        .split('\n')
+        .filter((line: string) => line.trim() !== '');
+
+      // Process in chunks to avoid blocking the main thread
+      const CHUNK_SIZE = 1000;
+      const totalLines = allLines.length;
+      const parsedData: TimeSeriesData[] = [];
+      let processedLines = 0;
+
+      // Parse header
+      const headers = allLines[0].split(',');
+      const columnIndices = {
+        lapDistPct: headers.indexOf('LapDistPct'),
+        brake: headers.indexOf('Brake'),
+        throttle: headers.indexOf('Throttle'),
+        rpm: headers.indexOf('RPM'),
+        steering: headers.indexOf('SteeringWheelAngle'),
+        speed: headers.indexOf('Speed'),
+        gear: headers.indexOf('Gear'),
+      };
+
+      // Process data in chunks
+      for (
+        let chunkStart = 1;
+        chunkStart < totalLines;
+        chunkStart += CHUNK_SIZE
+      ) {
+        const chunkEnd = Math.min(chunkStart + CHUNK_SIZE, totalLines);
+        const chunk = allLines.slice(chunkStart, chunkEnd);
+
+        // Process chunk asynchronously to allow UI updates
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        for (const line of chunk) {
+          const values = line.split(',');
+          if (
+            values.length <
+            Object.values(columnIndices).reduce(
+              (max, idx) => Math.max(max, idx),
+              0,
+            ) +
+              1
+          ) {
+            continue;
+          }
+
+          const lapDistPct = parseFloat(values[columnIndices.lapDistPct]);
+          const brake = parseFloat(values[columnIndices.brake]);
+          const throttle = parseFloat(values[columnIndices.throttle]);
+          const rpm = parseFloat(values[columnIndices.rpm]);
+          const steeringWheelAngle = parseFloat(values[columnIndices.steering]);
+          const speed = parseFloat(values[columnIndices.speed]);
+          const gear = parseFloat(values[columnIndices.gear]);
+
+          if (
+            !isNaN(lapDistPct) &&
+            !isNaN(brake) &&
+            !isNaN(throttle) &&
+            !isNaN(rpm) &&
+            !isNaN(steeringWheelAngle) &&
+            !isNaN(speed) &&
+            !isNaN(gear)
+          ) {
+            parsedData.push({
+              timestamp: new Date(),
+              value: brake,
+              label: `${(lapDistPct * 100).toFixed(2)}%`,
+              lapDistPct: lapDistPct * 100,
+              brake,
+              throttle,
+              rpm,
+              steeringWheelAngle,
+              speed,
+              gear,
+            });
+          }
+        }
+
+        processedLines += chunk.length;
+        console.log(
+          `Processed ${processedLines}/${totalLines - 1} data points...`,
+        );
+      }
+
+      // Sort by LapDistPct to ensure proper ordering
+      parsedData.sort((a, b) => a.lapDistPct - b.lapDistPct);
+
+      console.log(`Loaded ${parsedData.length} data points from CSV`);
+
+      // Pre-calculate normalized data for all series using Float32Array for memory efficiency
+      const seriesKeys = [
+        'brake',
+        'throttle',
+        'rpm',
+        'steeringWheelAngle',
+        'speed',
+        'gear',
+      ] as const;
+      const seriesColors = {
+        brake: '#FF4444',
+        throttle: '#44FF44',
+        rpm: '#4444FF',
+        steeringWheelAngle: '#FFFF44',
+        speed: '#FF44FF',
+        gear: '#44FFFF',
+      };
+
+      const normalizedData: NormalizedSeriesData[] = seriesKeys.map(
+        seriesKey => {
+          const validDataCount = parsedData.length;
+          const values = new Float32Array(validDataCount);
+          let minVal = Infinity;
+          let maxVal = -Infinity;
+
+          // First pass: find min/max
+          for (let i = 0; i < validDataCount; i++) {
+            const val = parsedData[i][seriesKey] as number;
+            values[i] = val;
+            minVal = Math.min(minVal, val);
+            maxVal = Math.max(maxVal, val);
+          }
+
+          const range = maxVal - minVal;
+
+          // Second pass: normalize
+          const normalizedValues = new Float32Array(validDataCount);
+          if (range > 0) {
+            for (let i = 0; i < validDataCount; i++) {
+              normalizedValues[i] = (values[i] - minVal) / range;
+            }
+          }
+
+          return {
+            key: seriesKey,
+            color: seriesColors[seriesKey],
+            minVal,
+            maxVal,
+            range,
+            normalizedData: normalizedValues,
+          };
+        },
+      );
+
+      const processed: ProcessedData = {
+        raw: parsedData,
+        normalized: normalizedData,
+        totalPoints: parsedData.length,
+      };
+
+      setProcessedData(processed);
+      updateVisibleData(parsedData, 0);
+      onDataUpdate?.(parsedData);
+    } catch (error) {
+      console.error('Failed to load CSV data, using generated data:', error);
+      initializeData();
+    }
+  }, [updateVisibleData, onDataUpdate, initializeData]);
+
   // Start real-time playback
   const startPlayback = () => {
-    if (isPlaying || allData.length === 0) {
+    if (isPlaying || !processedData) {
       return;
     }
 
@@ -187,11 +335,11 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
     const animate = () => {
       setCurrentPosition(prevPos => {
         let nextPos = prevPos + 2; // Smooth continuous movement
-        if (nextPos >= allData.length) {
+        if (nextPos >= processedData.totalPoints) {
           nextPos = 0; // Loop back to start
+        } else if (nextPos < 0) {
+          nextPos = processedData.totalPoints - 1; // Loop back to end
         }
-
-        updateVisibleData(allData, nextPos);
         return nextPos;
       });
     };
@@ -216,7 +364,9 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
   const resetPlayback = () => {
     stopPlayback();
     setCurrentPosition(0);
-    updateVisibleData(allData, 0);
+    if (processedData) {
+      updateVisibleData(processedData.raw, 0);
+    }
   };
 
   useEffect(() => {
@@ -228,70 +378,34 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
     };
   }, [loadCsvData]);
 
-  // Update visible data when zoom level changes
+  // Update visible data when position or zoom level changes
   useEffect(() => {
-    if (allData.length > 0) {
-      updateVisibleData(allData, currentPosition);
+    if (processedData) {
+      updateVisibleData(processedData.raw, currentPosition);
     }
-  }, [zoomLevel, allData, currentPosition, updateVisibleData]);
+  }, [zoomLevel, processedData, currentPosition, updateVisibleData]);
 
-  // Ensure data is properly set up when series selection changes
-  useEffect(() => {
-    if (allData.length > 0) {
-      createMultiSeriesData();
-    }
-  }, [selectedSeries, allData, createMultiSeriesData]);
-
-  // Create normalized multi-series data
-  const createMultiSeriesData = useCallback(() => {
-    if (allData.length === 0 || selectedSeries.length === 0) {
-      return;
+  // Get selected series data directly from processed data
+  const getSelectedSeriesData = useCallback(() => {
+    if (!processedData || selectedSeries.length === 0) {
+      return [];
     }
 
-    const seriesColors = {
-      brake: '#FF4444',
-      throttle: '#44FF44',
-      rpm: '#4444FF',
-      steeringWheelAngle: '#FFFF44',
-      speed: '#FF44FF',
-      gear: '#44FFFF',
-    };
+    return selectedSeries
+      .map(seriesKey => {
+        const seriesData = processedData.normalized.find(
+          s => s.key === seriesKey,
+        );
+        return seriesData || null;
+      })
+      .filter(Boolean);
+  }, [processedData, selectedSeries]);
 
-    const multiData = selectedSeries.map(seriesKey => {
-      // Calculate min/max for this series to normalize
-      const values = allData.map(
-        item => item[seriesKey as keyof TimeSeriesData] as number,
-      );
-      const minVal = Math.min(...values);
-      const maxVal = Math.max(...values);
-      const range = maxVal - minVal;
-
-      return {
-        key: seriesKey,
-        color:
-          seriesColors[seriesKey as keyof typeof seriesColors] || '#FFFFFF',
-        data: allData.map(item => ({
-          ...item,
-          normalizedValue:
-            range > 0
-              ? ((item[seriesKey as keyof TimeSeriesData] as number) - minVal) /
-                range
-              : 0,
-        })),
-      };
-    });
-
-    setMultiSeriesData(multiData);
-  }, [allData, selectedSeries]);
-
-  // Update multi-series data when selection changes
-  useEffect(() => {
-    createMultiSeriesData();
-  }, [createMultiSeriesData]);
+  // No need for complex setup - data is pre-computed
 
   // Restart animation when speed changes during playback
   useEffect(() => {
-    if (isPlaying && allData.length > 0) {
+    if (isPlaying && processedData) {
       // Stop current animation
       if (animationRef.current) {
         clearInterval(animationRef.current);
@@ -301,12 +415,11 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
       const animate = () => {
         setCurrentPosition(prevPos => {
           let nextPos = prevPos + 2 * playbackSpeed; // Move based on speed (includes direction and magnitude)
-          if (nextPos >= allData.length) {
+          if (nextPos >= processedData.totalPoints) {
             nextPos = 0; // Loop back to start
           } else if (nextPos < 0) {
-            nextPos = allData.length - 1; // Loop back to end
+            nextPos = processedData.totalPoints - 1; // Loop back to end
           }
-          updateVisibleData(allData, nextPos);
           return nextPos;
         });
       };
@@ -316,11 +429,11 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
 
       animationRef.current = setInterval(animate, speedDelay);
     }
-  }, [playbackSpeed, isPlaying, allData, updateVisibleData]);
+  }, [playbackSpeed, isPlaying, processedData, updateVisibleData]);
 
   // Update visible data when zoom changes during playback
   useEffect(() => {
-    if (isPlaying && allData.length > 0) {
+    if (isPlaying && processedData) {
       // Stop current animation
       if (animationRef.current) {
         clearInterval(animationRef.current);
@@ -330,12 +443,11 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
       const animate = () => {
         setCurrentPosition(prevPos => {
           let nextPos = prevPos + 2 * playbackSpeed; // Move based on speed (includes direction and magnitude)
-          if (nextPos >= allData.length) {
+          if (nextPos >= processedData.totalPoints) {
             nextPos = 0; // Loop back to start
           } else if (nextPos < 0) {
-            nextPos = allData.length - 1; // Loop back to end
+            nextPos = processedData.totalPoints - 1; // Loop back to end
           }
-          updateVisibleData(allData, nextPos);
           return nextPos;
         });
       };
@@ -345,13 +457,13 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
 
       animationRef.current = setInterval(animate, speedDelay);
     }
-  }, [playbackSpeed, zoomLevel, isPlaying, allData, updateVisibleData]);
+  }, [playbackSpeed, zoomLevel, isPlaying, processedData, updateVisibleData]);
 
   // Note: Zoom changes during playback are handled automatically by the animation
   // since updateVisibleData uses the current zoomLevel from state
 
   // Prepare data for display - brake values are 0-1, convert to 0-100% for display
-  const displayData = visibleData.map(item => ({
+  const displayData = visibleData.data.map(item => ({
     ...item,
     displayValue: item.value * 100, // Convert to percentage for display
   }));
@@ -361,8 +473,11 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
   const chartHeight = 250;
 
   // Get current "now" position data (x=0 position = "now")
-  const currentData = visibleData.length > 0 ? visibleData[0] : null; // First point is at x=0 ("now")
+  const currentData = visibleData.data.length > 0 ? visibleData.data[0] : null; // First point is at x=0 ("now")
   const currentLapPct = currentData ? currentData.lapDistPct : 0;
+
+  // Get selected series data for stats display
+  const selectedSeriesData = getSelectedSeriesData();
 
   return (
     <View style={styles.container}>
@@ -458,7 +573,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
               style={styles.miniButton}
               onPress={() =>
                 setCurrentPosition(prev =>
-                  Math.min(allData.length - 1, prev + 50),
+                  Math.min((processedData?.totalPoints || 0) - 1, prev + 50),
                 )
               }>
               <Text style={styles.miniText}>⏭️</Text>
@@ -483,7 +598,10 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
               {playbackSpeed.toFixed(1)}x
             </Text>
             <Text style={styles.statusText}>
-              {Math.round((currentPosition / allData.length) * 100)}%
+              {Math.round(
+                (currentPosition / (processedData?.totalPoints || 1)) * 100,
+              )}
+              %
             </Text>
           </View>
 
@@ -532,85 +650,61 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
               ))}
             </View>
 
-            {/* Data lines */}
+            {/* Data lines - Optimized SVG-based rendering */}
             <View style={styles.lineChart}>
-              {/* Draw multiple series overlay */}
-              {multiSeriesData.map(series => {
-                // Get visible data for this series (same window as single series)
-                const startIdx = Math.max(
-                  0,
-                  Math.floor(currentPosition) -
-                    Math.floor(
-                      (series.data.length * (15 - (zoomLevel - 1) * 3.25)) /
-                        100 /
-                        2,
-                    ),
-                );
-                const endIdx = Math.min(
-                  series.data.length,
-                  Math.floor(currentPosition) +
-                    Math.floor(
-                      (series.data.length * (15 - (zoomLevel - 1) * 3.25)) /
-                        100 /
-                        2,
-                    ),
-                );
-                const visibleSeriesData = series.data.slice(startIdx, endIdx);
+              {(() => {
+                if (!processedData || visibleData.data.length < 2) {
+                  return null;
+                }
 
-                return visibleSeriesData.length > 1
-                  ? visibleSeriesData.map((item: any, index: number) => {
-                      if (index === 0) {
-                        return null;
-                      }
+                const selectedData = getSelectedSeriesData();
+                const visibleCount = visibleData.data.length;
+                const actualStartIdx = visibleData.startIdx;
 
-                      const prevItem = visibleSeriesData[index - 1];
-                      const totalPoints = visibleSeriesData.length;
+                // Render all visible data points without sampling
 
-                      // Position based on index in visible data
-                      const x1 = ((index - 1) / (totalPoints - 1)) * chartWidth;
-                      const x2 = (index / (totalPoints - 1)) * chartWidth;
+                return selectedData.map(series => {
+                  if (!series) {
+                    return null;
+                  }
 
-                      // Y position based on normalized value
-                      const y1 =
-                        chartHeight - prevItem.normalizedValue * chartHeight;
-                      const y2 =
-                        chartHeight - item.normalizedValue * chartHeight;
+                  // Generate SVG path for this series using all visible data points
+                  let pathData = '';
+                  for (let i = 0; i < visibleCount; i++) {
+                    const x = (i / (visibleCount - 1)) * chartWidth;
+                    const dataIndex = actualStartIdx + i;
+                    const normalizedValue =
+                      series.normalizedData[dataIndex] || 0;
+                    const y = chartHeight - normalizedValue * chartHeight;
 
-                      const length = Math.sqrt(
-                        Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2),
-                      );
-                      if (length < 1) {
-                        return null;
-                      }
+                    if (i === 0) {
+                      pathData += `M ${x} ${y}`;
+                    } else {
+                      pathData += ` L ${x} ${y}`;
+                    }
+                  }
 
-                      const angle =
-                        Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI);
-                      const centerX = x1 + (x2 - x1) / 2;
-                      const centerY = y1 + (y2 - y1) / 2;
-
-                      return (
-                        <View
-                          key={`line-${series.key}-${index}`}
-                          style={[
-                            [
-                              styles.lineSegment,
-                              {
-                                left: centerX - length / 2,
-                                top: Math.max(
-                                  0,
-                                  Math.min(chartHeight - 2, centerY - 1),
-                                ),
-                                width: length,
-                                transform: [{rotate: `${angle}deg`}],
-                                backgroundColor: series.color,
-                              },
-                            ],
-                          ]}
+                  return (
+                    <View
+                      key={`series-${series.key}`}
+                      style={styles.svgContainer}>
+                      <svg
+                        width={chartWidth}
+                        height={chartHeight}
+                        style={styles.svgChart}>
+                        <path
+                          d={pathData}
+                          stroke={series.color}
+                          strokeWidth={2}
+                          fill='none'
+                          strokeLinecap='round'
+                          strokeLinejoin='round'
                         />
-                      );
-                    })
-                  : null;
-              })}
+                      </svg>
+                    </View>
+                  );
+                });
+              })()}
 
               {/* "Now" indicator at x=0 (leftmost position) */}
               <View style={[styles.nowIndicator, {height: chartHeight}]} />
@@ -658,10 +752,12 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
         </Text>
         <View style={styles.currentValues}>
           {selectedSeries.map(seriesKey => {
-            const seriesData = multiSeriesData.find(s => s.key === seriesKey);
-            const currentValue = allData[Math.floor(currentPosition)]?.[
-              seriesKey as keyof TimeSeriesData
-            ] as number;
+            const seriesData = selectedSeriesData.find(
+              s => s.key === seriesKey,
+            );
+            const currentValue = processedData?.raw[
+              Math.floor(currentPosition)
+            ]?.[seriesKey as keyof TimeSeriesData] as number;
             const color = seriesData?.color || '#FFFFFF';
 
             return (
@@ -689,7 +785,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
         </View>
         <Text style={styles.statsText}>
           Series: {selectedSeries.length} | Points:{' '}
-          {multiSeriesData[0]?.data.length || 0}
+          {processedData?.totalPoints || 0}
         </Text>
       </View>
     </View>
@@ -783,6 +879,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginHorizontal: 4,
   },
+  playButtonActive: {
+    backgroundColor: '#FF5722',
+  },
   playText: {
     fontSize: 16,
   },
@@ -849,11 +948,14 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 250,
   },
-  lineSegment: {
+  svgContainer: {
     position: 'absolute',
-    height: 2,
-    backgroundColor: '#2196f3',
-    opacity: 0.8,
+    width: '100%',
+    height: '100%',
+  },
+  svgChart: {
+    width: '100%',
+    height: '100%',
   },
   nowIndicator: {
     position: 'absolute',
