@@ -31,7 +31,7 @@ const UserProfile: React.FC = () => {
         <View style={styles.fullHeightContainer}>
           <View style={styles.centerContainer}>
             <ActivityIndicator
-              size="large"
+              size='large'
               color={RacingTheme.colors.primary}
             />
             <Text style={styles.loadingText}>
@@ -51,7 +51,7 @@ const UserProfile: React.FC = () => {
             <Text style={styles.errorText}>CONNECTION FAILED</Text>
             <Text style={styles.errorSubtext}>{error}</Text>
             <RacingButton
-              title="RETRY CONNECTION"
+              title='RETRY CONNECTION'
               onPress={() => window.location.reload()}
               style={styles.retryButton}
             />
@@ -113,7 +113,7 @@ const UserProfile: React.FC = () => {
                 <Text style={styles.subscriptionPlan}>
                   {user.subscriptionPlan}
                 </Text>
-                <StatusBadge status="clean" style={styles.subscriptionBadge} />
+                <StatusBadge status='clean' style={styles.subscriptionBadge} />
               </View>
             </RacingCard>
 
@@ -145,7 +145,7 @@ const UserProfile: React.FC = () => {
                       <Text style={styles.teamName}>{team.name}</Text>
                       <Text style={styles.teamRole}>{team.role}</Text>
                     </View>
-                    <StatusBadge status="best" style={styles.teamBadge} />
+                    <StatusBadge status='best' style={styles.teamBadge} />
                   </View>
                 ))}
               </RacingCard>
@@ -163,7 +163,7 @@ const UserProfile: React.FC = () => {
                     {user.subscribedDataPacks.length} ACTIVE DATA PACK
                     {user.subscribedDataPacks.length !== 1 ? 'S' : ''}
                   </Text>
-                  <StatusBadge status="clean" style={styles.dataPackBadge} />
+                  <StatusBadge status='clean' style={styles.dataPackBadge} />
                 </RacingCard>
               )}
 

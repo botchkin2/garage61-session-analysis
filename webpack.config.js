@@ -81,15 +81,22 @@ module.exports = {
     }),
   ],
   devServer: {
-    static: {
-      directory: path.join(__dirname, 'public'),
-    },
+    static: [
+      {
+        directory: path.join(__dirname, 'public'),
+      },
+      {
+        directory: path.join(__dirname, 'sample_data'),
+        publicPath: '/sample_data',
+      },
+    ],
     compress: true,
     port: 3000,
     hot: true,
     historyApiFallback: true,
-    proxy: {
-      '/api/garage61': {
+    proxy: [
+      {
+        context: ['/api/garage61'],
         target: 'https://garage61.net/api/v1',
         changeOrigin: true,
         pathRewrite: (pathStr, req) => {
@@ -103,7 +110,7 @@ module.exports = {
         },
         logLevel: 'debug',
       },
-    },
+    ],
   },
   output: {
     path: path.resolve(__dirname, 'web-build'),

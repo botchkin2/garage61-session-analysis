@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+web-build/
+dist/
+build/
+
+# Generated files
+*.min.js
+*.min.css
+
+# Package files
+package-lock.json
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Source maps
+*.map

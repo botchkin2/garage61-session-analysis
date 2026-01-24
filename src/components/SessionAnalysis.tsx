@@ -326,7 +326,7 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
     return (
       <View style={styles.mainContainer}>
         <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={RacingTheme.colors.primary} />
+          <ActivityIndicator size='large' color={RacingTheme.colors.primary} />
           <Text style={styles.loadingText}>ANALYZING SESSION DATA...</Text>
         </View>
       </View>
@@ -341,7 +341,7 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
           <Text style={styles.errorMessage}>
             Failed to analyze session data.
           </Text>
-          <RacingButton title="GO BACK" onPress={onBack} />
+          <RacingButton title='GO BACK' onPress={onBack} />
         </View>
       </View>
     );
@@ -358,7 +358,7 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
             {/* Back Button */}
             <View style={styles.backButtonContainer}>
               <RacingButton
-                title="⬅ BACK TO SESSIONS"
+                title='⬅ BACK TO SESSIONS'
                 onPress={onBack}
                 style={styles.backButton}
               />
@@ -382,22 +382,22 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
             {/* Summary Metrics */}
             <View style={styles.metricsGrid}>
               <MetricCard
-                title="TOTAL LAPS"
+                title='TOTAL LAPS'
                 value={analysis.totalLaps.toString()}
                 style={styles.metricCard}
               />
               <MetricCard
-                title="VALID SECTORS"
+                title='VALID SECTORS'
                 value={analysis.validSectorLaps.toString()}
                 style={styles.metricCard}
               />
               <MetricCard
-                title="SECTIONS"
+                title='SECTIONS'
                 value={analysis.sectorAnalysis.length.toString()}
                 style={styles.metricCard}
               />
               <MetricCard
-                title="OVERALL CONSISTENCY"
+                title='OVERALL CONSISTENCY'
                 value={`${analysis.overallConsistency.toFixed(1)}%`}
                 style={[
                   styles.metricCard,

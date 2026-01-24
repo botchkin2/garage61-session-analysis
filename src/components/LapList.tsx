@@ -209,7 +209,7 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
         <View style={styles.fullHeightContainer}>
           <View style={styles.centerContainer}>
             <ActivityIndicator
-              size="large"
+              size='large'
               color={RacingTheme.colors.primary}
             />
             <Text style={styles.loadingText}>LOADING TELEMETRY DATA...</Text>
@@ -227,7 +227,7 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
             <Text style={styles.errorText}>TELEMETRY ERROR</Text>
             <Text style={styles.errorText}>{error}</Text>
             <RacingButton
-              title="RETRY CONNECTION"
+              title='RETRY CONNECTION'
               onPress={() => loadLaps()}
               style={styles.refreshButton}
             />
@@ -299,17 +299,17 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
             {/* Performance Metrics Grid */}
             <View style={styles.metricsGrid}>
               <MetricCard
-                title="TOTAL LAPS"
+                title='TOTAL LAPS'
                 value={laps.length.toString()}
                 style={styles.metricCard}
               />
               <MetricCard
-                title="SESSIONS"
+                title='SESSIONS'
                 value={totalEvents.toString()}
                 style={styles.metricCard}
               />
               <MetricCard
-                title="BEST LAP"
+                title='BEST LAP'
                 value={
                   bestOverallTime === Infinity
                     ? '--:--.---'
@@ -318,7 +318,7 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
                 style={styles.metricCard}
               />
               <MetricCard
-                title="AVG LAP"
+                title='AVG LAP'
                 value={
                   isNaN(averageOverallTime)
                     ? '--:--.---'
@@ -330,7 +330,7 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
 
             {/* Refresh Button */}
             <RacingButton
-              title="🔄 REFRESH TELEMETRY"
+              title='🔄 REFRESH TELEMETRY'
               onPress={handleRefresh}
               style={styles.refreshButton}
               disabled={refreshing}
@@ -422,13 +422,13 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
                               {lap.session}
                             </Text>
                             <View style={styles.lapStatus}>
-                              {lap.clean && <StatusBadge status="clean" />}
+                              {lap.clean && <StatusBadge status='clean' />}
                               {lap.offtrack && (
-                                <StatusBadge status="offtrack" />
+                                <StatusBadge status='offtrack' />
                               )}
-                              {lap.pitlane && <StatusBadge status="pit" />}
+                              {lap.pitlane && <StatusBadge status='pit' />}
                               {lap.incomplete && (
-                                <StatusBadge status="incomplete" />
+                                <StatusBadge status='incomplete' />
                               )}
                             </View>
                           </View>

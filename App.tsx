@@ -10,18 +10,19 @@ import {
 } from 'react-native';
 import {AuthProvider} from '@/utils';
 import {UserProfile, LapList, SessionAnalysis} from '@/components';
+import {ChartDemoScreen} from '@/screens';
 import {RacingTheme} from '@/theme';
 import {SessionData} from '@/types';
 
 const App = (): React.JSX.Element => {
-  const [activeView, setActiveView] = useState<'profile' | 'laps' | 'session'>(
-    'profile',
-  );
+  const [activeView, setActiveView] = useState<
+    'profile' | 'laps' | 'charts' | 'session'
+  >('profile');
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
   const [tabAnimation] = useState(new Animated.Value(0));
 
   const switchView = (
-    newView: 'profile' | 'laps' | 'session',
+    newView: 'profile' | 'laps' | 'charts' | 'session',
     data?: SessionData,
   ) => {
     if (newView !== activeView) {
@@ -31,7 +32,14 @@ const App = (): React.JSX.Element => {
       setActiveView(newView);
       // Animate view switch
       Animated.timing(tabAnimation, {
-        toValue: newView === 'profile' ? 0 : newView === 'laps' ? 1 : 2,
+        toValue:
+          newView === 'profile'
+            ? 0
+            : newView === 'laps'
+            ? 1
+            : newView === 'charts'
+            ? 2
+            : 3,
         duration: RacingTheme.animations.normal,
         useNativeDriver: false,
       }).start();
@@ -51,7 +59,7 @@ const App = (): React.JSX.Element => {
     <AuthProvider>
       <SafeAreaView style={styles.container}>
         <StatusBar
-          barStyle="light-content"
+          barStyle='light-content'
           backgroundColor={RacingTheme.colors.background}
         />
 
@@ -86,6 +94,17 @@ const App = (): React.JSX.Element => {
                 📊 ANALYSIS
               </Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tab, activeView === 'charts' && styles.activeTab]}
+              onPress={() => switchView('charts')}>
+              <Text
+                style={[
+                  styles.tabText,
+                  activeView === 'charts' && styles.activeTabText,
+                ]}>
+                📈 CHARTS
+              </Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -93,6 +112,8 @@ const App = (): React.JSX.Element => {
         <View style={styles.contentContainer}>
           {activeView === 'profile' ? (
             <UserProfile />
+          ) : activeView === 'charts' ? (
+            <ChartDemoScreen />
           ) : activeView === 'session' && sessionData ? (
             <SessionAnalysis
               sessionData={sessionData}
@@ -122,7 +143,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: RacingTheme.typography.h2,
-    fontWeight: RacingTheme.typography.bold,
+    fontWeight: '700' as const,
     color: RacingTheme.colors.primary,
     textAlign: 'center',
     letterSpacing: 2,
@@ -153,12 +174,12 @@ const styles = StyleSheet.create({
   tabText: {
     fontSize: RacingTheme.typography.body,
     color: RacingTheme.colors.textSecondary,
-    fontWeight: RacingTheme.typography.medium,
+    fontWeight: '500' as const,
     letterSpacing: 0.5,
   },
   activeTabText: {
     color: RacingTheme.colors.primary,
-    fontWeight: RacingTheme.typography.bold,
+    fontWeight: '700' as const,
   },
   contentContainer: {
     flex: 1,
