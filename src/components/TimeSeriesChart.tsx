@@ -52,7 +52,7 @@ interface TimeSeriesChartProps {
 }
 
 export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
-  title = 'Real-Time Data',
+  title = 'Time Series Data',
   dataPoints = 20,
   onDataUpdate,
 }) => {
@@ -67,8 +67,6 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
   const [isPlaying, setIsPlaying] = useState(false);
   // Removed currentPosition state - derived from visibleData.endIdx
   const [playbackSpeed, setPlaybackSpeed] = useState(1); // Speed multiplier (-5 to 5, negative = rewind)
-  const [dynamicSpeedMode, setDynamicSpeedMode] = useState(false); // Whether to use dynamic speed based on car speed
-  const [realTimeScale, setRealTimeScale] = useState(1.0); // Scale factor for real-time playback (0.5x to 2.0x)
   const [zoomLevel, setZoomLevel] = useState(3); // Zoom level 1-5 (higher = more zoomed in/less data)
   const [selectedSeries, setSelectedSeries] = useState<string[]>(['brake']); // Selected data series to display (multi-select)
   const animationRef = useRef<NodeJS.Timeout | null>(null);
@@ -161,7 +159,13 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
         gear: Math.floor(Math.random() * 6) + 1,
       });
     }
-    setAllData(initialData);
+    // Create basic processed data for demo (without complex normalization)
+    const processed: ProcessedData = {
+      raw: initialData,
+      normalized: [], // Skip normalization for demo data
+      totalPoints: initialData.length,
+    };
+    setProcessedData(processed);
     updateVisibleData(initialData, 0);
     onDataUpdate?.(initialData);
   }, [dataPoints, updateVisibleData, onDataUpdate]);
@@ -330,7 +334,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
     }
   }, [updateVisibleData, onDataUpdate, initializeData]);
 
-  // Start real-time playback
+  // Start playback
   const startPlayback = () => {
     if (isPlaying || !processedData) {
       return;
@@ -340,17 +344,10 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
 
     const animate = () => {
       const currentPos = getCurrentPosition();
-      let advancement = 1.767; // Base real-time advancement rate
+      let advancement = 1.767; // Base advancement rate
 
-      if (dynamicSpeedMode) {
-        // Simple: multiply base rate by current speed at x=0 position
-        const speedAtX0 =
-          processedData.raw[Math.floor(currentPos)]?.speed || 50;
-        advancement *= (speedAtX0 / 50) * realTimeScale; // Normalize to ~50 m/s baseline
-      } else {
-        // Manual speed control
-        advancement *= playbackSpeed;
-      }
+      // Manual speed control
+      advancement *= playbackSpeed;
 
       let nextPos = currentPos + advancement;
       if (nextPos >= processedData.totalPoints) {
@@ -362,10 +359,8 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
       updatePosition(nextPos);
     };
 
-    // Use appropriate interval based on mode
-    const animationInterval = dynamicSpeedMode
-      ? 30
-      : Math.max(5, 30 / Math.abs(playbackSpeed));
+    // Use variable interval based on speed
+    const animationInterval = Math.max(5, 30 / Math.abs(playbackSpeed));
 
     animationRef.current = setInterval(animate, animationInterval);
   };
@@ -444,17 +439,10 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
       // Restart with new speed
       const animate = () => {
         const currentPos = getCurrentPosition();
-        let advancement = 1.767; // Base real-time advancement rate
+        let advancement = 1.767; // Base advancement rate
 
-        if (dynamicSpeedMode) {
-          // Simple: multiply base rate by current speed at x=0 position
-          const speedAtX0 =
-            processedData.raw[Math.floor(currentPos)]?.speed || 50;
-          advancement *= (speedAtX0 / 50) * realTimeScale; // Normalize to ~50 m/s baseline
-        } else {
-          // Manual speed control
-          advancement *= playbackSpeed;
-        }
+        // Manual speed control
+        advancement *= playbackSpeed;
 
         let nextPos = currentPos + advancement;
         if (nextPos >= processedData.totalPoints) {
@@ -466,10 +454,8 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
         updatePosition(nextPos);
       };
 
-      // Use fixed interval for real-time mode, variable for manual mode
-      const animationInterval = dynamicSpeedMode
-        ? 30
-        : Math.max(10, 30 / Math.abs(playbackSpeed));
+      // Use variable interval based on speed
+      const animationInterval = Math.max(10, 30 / Math.abs(playbackSpeed));
 
       animationRef.current = setInterval(animate, animationInterval);
     }
@@ -486,17 +472,10 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
       // Restart with new speed
       const animate = () => {
         const currentPos = getCurrentPosition();
-        let advancement = 1.767; // Base real-time advancement rate
+        let advancement = 1.767; // Base advancement rate
 
-        if (dynamicSpeedMode) {
-          // Simple: multiply base rate by current speed at x=0 position
-          const speedAtX0 =
-            processedData.raw[Math.floor(currentPos)]?.speed || 50;
-          advancement *= (speedAtX0 / 50) * realTimeScale; // Normalize to ~50 m/s baseline
-        } else {
-          // Manual speed control
-          advancement *= playbackSpeed;
-        }
+        // Manual speed control
+        advancement *= playbackSpeed;
 
         let nextPos = currentPos + advancement;
         if (nextPos >= processedData.totalPoints) {
@@ -508,17 +487,13 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
         updatePosition(nextPos);
       };
 
-      // Use fixed interval for real-time mode, variable for manual mode
-      const animationInterval = dynamicSpeedMode
-        ? 30
-        : Math.max(10, 30 / Math.abs(playbackSpeed));
+      // Use variable interval based on speed
+      const animationInterval = Math.max(10, 30 / Math.abs(playbackSpeed));
 
       animationRef.current = setInterval(animate, animationInterval);
     }
   }, [
     playbackSpeed,
-    dynamicSpeedMode,
-    realTimeScale,
     zoomLevel,
     isPlaying,
     processedData,
@@ -610,7 +585,6 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
             style={styles.miniButton}
             onPress={() => {
               resetPlayback();
-              setDynamicSpeedMode(false); // Switch to manual mode
             }}>
             <Text style={styles.miniText}>🔄</Text>
           </TouchableOpacity>
@@ -620,7 +594,6 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
             <TouchableOpacity
               style={styles.miniButton}
               onPress={() => {
-                setDynamicSpeedMode(false); // Switch to manual mode
                 setPlaybackSpeed(Math.max(-5.0, playbackSpeed - 0.5));
                 if (!isPlaying) {
                   startPlayback();
@@ -632,7 +605,6 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
             <TouchableOpacity
               style={styles.miniButton}
               onPress={() => {
-                setDynamicSpeedMode(false); // Switch to manual mode
                 updatePosition(Math.max(0, getCurrentPosition() - 50));
                 if (!isPlaying) {
                   startPlayback();
@@ -651,7 +623,6 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
                   stopPlayback();
                 } else {
                   startPlayback();
-                  // Don't change mode - preserve current mode (manual or real-time)
                 }
               }}>
               <Text style={styles.playText}>{isPlaying ? '⏸️' : '▶️'}</Text>
@@ -660,7 +631,6 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
             <TouchableOpacity
               style={styles.miniButton}
               onPress={() => {
-                setDynamicSpeedMode(false); // Switch to manual mode
                 updatePosition(
                   Math.min(
                     (processedData?.totalPoints || 0) - 1,
@@ -677,7 +647,6 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
             <TouchableOpacity
               style={styles.miniButton}
               onPress={() => {
-                setDynamicSpeedMode(false); // Switch to manual mode
                 setPlaybackSpeed(Math.min(5.0, playbackSpeed + 0.5));
                 if (!isPlaying) {
                   startPlayback();
@@ -687,43 +656,6 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
             </TouchableOpacity>
           </View>
 
-          {/* Real Time Mode Toggle */}
-          <TouchableOpacity
-            style={[
-              styles.miniButton,
-              dynamicSpeedMode && styles.miniButtonActive,
-            ]}
-            onPress={() => {
-              const newMode = !dynamicSpeedMode;
-              setDynamicSpeedMode(newMode);
-              if (newMode && !isPlaying) {
-                startPlayback(); // Start playback when switching to real-time mode
-              }
-            }}>
-            <Text style={styles.miniText}>⏱️</Text>
-          </TouchableOpacity>
-
-          {/* Real Time Scale Controls */}
-          {dynamicSpeedMode && (
-            <View style={styles.scaleControls}>
-              <TouchableOpacity
-                style={styles.miniButton}
-                onPress={() =>
-                  setRealTimeScale(Math.max(0.5, realTimeScale - 0.1))
-                }>
-                <Text style={styles.miniText}>-</Text>
-              </TouchableOpacity>
-              <Text style={styles.scaleText}>{realTimeScale.toFixed(1)}x</Text>
-              <TouchableOpacity
-                style={styles.miniButton}
-                onPress={() =>
-                  setRealTimeScale(Math.min(2.0, realTimeScale + 0.1))
-                }>
-                <Text style={styles.miniText}>+</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
           {/* Speed & Position Display */}
           <View style={styles.statusGroup}>
             <Text
@@ -731,17 +663,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
                 styles.statusText,
                 playbackSpeed < 0 && styles.statusTextReverse,
               ]}>
-              {(() => {
-                if (dynamicSpeedMode && processedData) {
-                  // Show current speed at x=0 for real-time mode
-                  const speedAtX0 =
-                    processedData.raw[Math.floor(getCurrentPosition())]
-                      ?.speed || 50;
-                  const effectiveRate = (speedAtX0 / 50) * realTimeScale;
-                  return effectiveRate.toFixed(1) + 'x';
-                }
-                return playbackSpeed.toFixed(1) + 'x';
-              })()}
+              {playbackSpeed.toFixed(1)}x
             </Text>
             <Text style={styles.statusText}>
               {Math.round(
@@ -773,13 +695,15 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
 
       <View style={styles.chartContainer}>
         <View style={styles.simpleChart}>
-          {/* Y-axis labels */}
+          {/* Y-axis */}
           <View style={styles.yAxis}>
             {[100, 80, 60, 40, 20, 0].map(value => (
               <Text key={value} style={styles.yAxisLabel}>
                 {value}%
               </Text>
             ))}
+            {/* Y-axis line */}
+            <View style={styles.yAxisLine} />
           </View>
 
           {/* Chart area */}
@@ -852,9 +776,6 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
                   );
                 });
               })()}
-
-              {/* "Now" indicator at x=0 (leftmost position) */}
-              <View style={[styles.nowIndicator, {height: chartHeight}]} />
             </View>
 
             {/* X-axis */}
@@ -898,10 +819,8 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
           Position: {currentLapPct.toFixed(1)}% lap
         </Text>
         <View style={styles.currentValues}>
-          {selectedSeries.map(seriesKey => {
-            const seriesData = selectedSeriesData.find(
-              s => s.key === seriesKey,
-            );
+          {selectedSeries.map((seriesKey, index) => {
+            const seriesData = selectedSeriesData[index];
             const currentValue = processedData?.raw[
               Math.floor(getCurrentPosition())
             ]?.[seriesKey as keyof TimeSeriesData] as number;
@@ -936,22 +855,6 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
           Series: {selectedSeries.length} | Points:{' '}
           {processedData?.totalPoints || 0}
         </Text>
-        {dynamicSpeedMode && processedData && (
-          <Text style={styles.statsText}>
-            Dynamic Speed:{' '}
-            {(() => {
-              // Use speed from current "now" position (x=0, left side)
-              const currentSpeedMs =
-                processedData.raw[Math.floor(getCurrentPosition())]?.speed ||
-                50;
-              const currentSpeedMph = currentSpeedMs * 2.23694; // Convert m/s to mph
-              const effectiveRate = (currentSpeedMs / 50) * realTimeScale;
-              return `${currentSpeedMph.toFixed(
-                1,
-              )} mph → ${effectiveRate.toFixed(1)}x real-time`;
-            })()}
-          </Text>
-        )}
       </View>
     </View>
   );
@@ -1138,22 +1041,20 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  nowIndicator: {
-    position: 'absolute',
-    left: 0,
-    width: 3,
-    backgroundColor: '#4CAF50',
-    shadowColor: '#4CAF50',
-    shadowOffset: {width: 0, height: 0},
-    shadowOpacity: 0.6,
-    shadowRadius: 3,
-  },
   yAxis: {
     width: 50,
     justifyContent: 'space-between',
     alignItems: 'flex-end',
     paddingRight: 10,
     height: 250,
+  },
+  yAxisLine: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 1,
+    backgroundColor: '#444',
   },
   yAxisLabel: {
     fontSize: 12,
