@@ -15,6 +15,8 @@ interface TimeSeriesData {
   value: number;
   label: string;
   lapDistPct: number;
+  lat: number;
+  lon: number;
   brake: number;
   throttle: number;
   rpm: number;
@@ -36,6 +38,26 @@ interface ProcessedData {
   raw: TimeSeriesData[];
   normalized: NormalizedSeriesData[];
   totalPoints: number;
+  trackMap?: TrackMapData;
+}
+
+interface TrackCoordinate {
+  lat: number;
+  lon: number;
+  x: number; // Normalized X coordinate (0-1)
+  y: number; // Normalized Y coordinate (0-1)
+}
+
+interface TrackMapData {
+  coordinates: TrackCoordinate[];
+  bounds: {
+    minLat: number;
+    maxLat: number;
+    minLon: number;
+    maxLon: number;
+    width: number;
+    height: number;
+  };
 }
 
 interface VisibleDataInfo {
@@ -46,14 +68,12 @@ interface VisibleDataInfo {
 
 interface TimeSeriesChartProps {
   title?: string;
-  dataPoints?: number;
   animationDuration?: number;
   onDataUpdate?: (data: TimeSeriesData[]) => void;
 }
 
 export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
   title = 'Time Series Data',
-  dataPoints = 20,
   onDataUpdate,
 }) => {
   const [processedData, setProcessedData] = useState<ProcessedData | null>(
@@ -69,6 +89,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
   const [playbackSpeed, setPlaybackSpeed] = useState(1); // Speed multiplier (-5 to 5, negative = rewind)
   const [zoomLevel, setZoomLevel] = useState(3); // Zoom level 1-5 (higher = more zoomed in/less data)
   const [selectedSeries, setSelectedSeries] = useState<string[]>(['brake']); // Selected data series to display (multi-select)
+  const [showTrackMap, setShowTrackMap] = useState(true); // Whether to show track map
   const animationRef = useRef<NodeJS.Timeout | null>(null);
 
   // Cache for visible data calculations to avoid redundant computations
@@ -80,6 +101,62 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
     startIdx: number;
     endIdx: number;
   } | null>(null);
+
+  // Convert lat/long coordinates to normalized X/Y coordinates for track map
+  const convertLatLongToXY = useCallback(
+    (data: TimeSeriesData[]): TrackMapData => {
+      if (!data || data.length === 0) {
+        return {
+          coordinates: [],
+          bounds: {
+            minLat: 0,
+            maxLat: 0,
+            minLon: 0,
+            maxLon: 0,
+            width: 0,
+            height: 0,
+          },
+        };
+      }
+
+      // Find bounds
+      let minLat = Infinity;
+      let maxLat = -Infinity;
+      let minLon = Infinity;
+      let maxLon = -Infinity;
+
+      data.forEach(point => {
+        minLat = Math.min(minLat, point.lat);
+        maxLat = Math.max(maxLat, point.lat);
+        minLon = Math.min(minLon, point.lon);
+        maxLon = Math.max(maxLon, point.lon);
+      });
+
+      const latRange = maxLat - minLat;
+      const lonRange = maxLon - minLon;
+
+      // Convert to normalized coordinates (0-1 range)
+      const coordinates: TrackCoordinate[] = data.map(point => ({
+        lat: point.lat,
+        lon: point.lon,
+        x: lonRange > 0 ? (point.lon - minLon) / lonRange : 0.5,
+        y: latRange > 0 ? 1 - (point.lat - minLat) / latRange : 0.5, // Flip Y so north is up
+      }));
+
+      return {
+        coordinates,
+        bounds: {
+          minLat,
+          maxLat,
+          minLon,
+          maxLon,
+          width: lonRange,
+          height: latRange,
+        },
+      };
+    },
+    [],
+  );
 
   // Update visible data based on position and zoom level
   // Returns the new endIdx (current position)
@@ -140,36 +217,6 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
     [zoomLevel],
   );
 
-  // Fallback data generation for demo charts
-  const initializeData = useCallback(() => {
-    const baseTime = new Date();
-    const initialData: TimeSeriesData[] = [];
-    for (let i = 0; i < dataPoints; i++) {
-      const lapPct = (i / dataPoints) * 100;
-      initialData.push({
-        timestamp: baseTime,
-        value: Math.random(),
-        label: `${lapPct.toFixed(2)}%`,
-        lapDistPct: lapPct,
-        brake: Math.random(),
-        throttle: Math.random(),
-        rpm: Math.random() * 10000,
-        steeringWheelAngle: Math.random() * 360 - 180,
-        speed: Math.random() * 200,
-        gear: Math.floor(Math.random() * 6) + 1,
-      });
-    }
-    // Create basic processed data for demo (without complex normalization)
-    const processed: ProcessedData = {
-      raw: initialData,
-      normalized: [], // Skip normalization for demo data
-      totalPoints: initialData.length,
-    };
-    setProcessedData(processed);
-    updateVisibleData(initialData, 0);
-    onDataUpdate?.(initialData);
-  }, [dataPoints, updateVisibleData, onDataUpdate]);
-
   // Load CSV data with optimized chunked processing
   const loadCsvData = useCallback(async () => {
     try {
@@ -189,6 +236,8 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
       const headers = allLines[0].split(',');
       const columnIndices = {
         lapDistPct: headers.indexOf('LapDistPct'),
+        lat: headers.indexOf('Lat'),
+        lon: headers.indexOf('Lon'),
         brake: headers.indexOf('Brake'),
         throttle: headers.indexOf('Throttle'),
         rpm: headers.indexOf('RPM'),
@@ -223,6 +272,8 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
           }
 
           const lapDistPct = parseFloat(values[columnIndices.lapDistPct]);
+          const lat = parseFloat(values[columnIndices.lat]);
+          const lon = parseFloat(values[columnIndices.lon]);
           const brake = parseFloat(values[columnIndices.brake]);
           const throttle = parseFloat(values[columnIndices.throttle]);
           const rpm = parseFloat(values[columnIndices.rpm]);
@@ -232,6 +283,8 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
 
           if (
             !isNaN(lapDistPct) &&
+            !isNaN(lat) &&
+            !isNaN(lon) &&
             !isNaN(brake) &&
             !isNaN(throttle) &&
             !isNaN(rpm) &&
@@ -244,6 +297,8 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
               value: brake,
               label: `${(lapDistPct * 100).toFixed(2)}%`,
               lapDistPct: lapDistPct * 100,
+              lat,
+              lon,
               brake,
               throttle,
               rpm,
@@ -323,16 +378,17 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
         raw: parsedData,
         normalized: normalizedData,
         totalPoints: parsedData.length,
+        trackMap: convertLatLongToXY(parsedData),
       };
 
       setProcessedData(processed);
       updateVisibleData(parsedData, 0);
       onDataUpdate?.(parsedData);
     } catch (error) {
-      console.error('Failed to load CSV data, using generated data:', error);
-      initializeData();
+      console.error('Failed to load CSV data:', error);
+      // No fallback data - component will show empty state
     }
-  }, [updateVisibleData, onDataUpdate, initializeData]);
+  }, [updateVisibleData, onDataUpdate, convertLatLongToXY]);
 
   // Start playback
   const startPlayback = () => {
@@ -674,6 +730,13 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
             </Text>
           </View>
 
+          {/* Track Map Toggle */}
+          <TouchableOpacity
+            style={[styles.miniButton, showTrackMap && styles.miniButtonActive]}
+            onPress={() => setShowTrackMap(!showTrackMap)}>
+            <Text style={styles.miniText}>🗺️</Text>
+          </TouchableOpacity>
+
           {/* Zoom Controls */}
           <View style={styles.zoomGroup}>
             <TouchableOpacity
@@ -692,6 +755,95 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
           </View>
         </View>
       </View>
+
+      {/* Track Map */}
+      {showTrackMap && processedData?.trackMap && (
+        <View style={styles.trackMapContainer}>
+          <View style={styles.trackMap}>
+            <svg
+              width={200}
+              height={150}
+              style={styles.trackMapSvg}
+              viewBox='0 0 200 150'>
+              {/* Track path */}
+              <path
+                d={(() => {
+                  if (
+                    !processedData.trackMap ||
+                    processedData.trackMap.coordinates.length < 2
+                  ) {
+                    return '';
+                  }
+
+                  let pathData = '';
+                  processedData.trackMap.coordinates.forEach((coord, index) => {
+                    const x = coord.x * 180 + 10; // Scale to fit with padding
+                    const y = coord.y * 130 + 10; // Scale to fit with padding
+
+                    if (index === 0) {
+                      pathData += `M ${x} ${y}`;
+                    } else {
+                      pathData += ` L ${x} ${y}`;
+                    }
+                  });
+
+                  // Close the loop for circuit tracks
+                  if (processedData.trackMap.coordinates.length > 2) {
+                    const firstCoord = processedData.trackMap.coordinates[0];
+                    const x = firstCoord.x * 180 + 10;
+                    const y = firstCoord.y * 130 + 10;
+                    pathData += ` L ${x} ${y}`;
+                  }
+
+                  return pathData;
+                })()}
+                stroke='#2196F3'
+                strokeWidth={2}
+                fill='none'
+                strokeLinecap='round'
+                strokeLinejoin='round'
+              />
+
+              {/* Current position indicator */}
+              {(() => {
+                if (
+                  !processedData.trackMap ||
+                  processedData.trackMap.coordinates.length === 0
+                ) {
+                  return null;
+                }
+
+                const currentIndex = Math.floor(getCurrentPosition());
+                const currentCoord =
+                  processedData.trackMap.coordinates[
+                    Math.min(
+                      currentIndex,
+                      processedData.trackMap.coordinates.length - 1,
+                    )
+                  ];
+
+                if (!currentCoord) {
+                  return null;
+                }
+
+                const x = currentCoord.x * 180 + 10;
+                const y = currentCoord.y * 130 + 10;
+
+                return (
+                  <circle
+                    cx={x}
+                    cy={y}
+                    r={4}
+                    fill='#FF5722'
+                    stroke='#FFFFFF'
+                    strokeWidth={2}
+                  />
+                );
+              })()}
+            </svg>
+          </View>
+        </View>
+      )}
 
       <View style={styles.chartContainer}>
         <View style={styles.simpleChart}>
@@ -1100,5 +1252,20 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginRight: 12,
     marginBottom: 2,
+  },
+  trackMapContainer: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  trackMap: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  trackMapSvg: {
+    width: 200,
+    height: 150,
   },
 });
