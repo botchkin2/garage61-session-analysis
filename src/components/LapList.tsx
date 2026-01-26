@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   ScrollView,
   Animated,
+  Dimensions,
 } from 'react-native';
 import {apiClient} from '@/utils';
 import {Lap, LapsResponse} from '@/types';
@@ -15,7 +16,6 @@ import {
   RacingCard,
   RacingButton,
   StatusBadge,
-  MetricCard,
   LapTime,
   RacingDivider,
   TimeRangeSelector,
@@ -41,13 +41,13 @@ interface LapListProps {
 }
 
 const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
-  const [laps, setLaps] = useState<Lap[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [eventGroups, setEventGroups] = useState<EventGroup[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedTimeRange, setSelectedTimeRange] = useState<number>(1); // Default to 1 day (24h)
   const [fadeAnim] = useState(new Animated.Value(0));
+  const [dimensions, setDimensions] = useState(Dimensions.get('window'));
 
   // Group laps by event ID with racing metrics
   const groupLapsByEvent = useCallback((lapData: Lap[]): EventGroup[] => {
@@ -147,8 +147,6 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
           response.total,
         );
 
-        setLaps(response.items);
-
         // Group laps by event with enhanced metrics
         const groupedEvents = groupLapsByEvent(response.items);
         setEventGroups(groupedEvents);
@@ -181,11 +179,15 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
     }).start();
   }, [fadeAnim, loadLaps, selectedTimeRange]);
 
-  const formatLapTime = (seconds: number): string => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = (seconds % 60).toFixed(3);
-    return `${minutes}:${remainingSeconds.padStart(6, '0')}`;
-  };
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener('change', ({window}) => {
+      setDimensions(window);
+    });
+    return () => subscription?.remove();
+  }, []);
+
+  // Determine if we should use mobile layout (screen width < 768px)
+  const isMobile = dimensions.width < 768;
 
   const formatDate = (dateString: string): string => {
     return new Date(dateString).toLocaleDateString();
@@ -267,19 +269,17 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
       return;
     }
 
-    // For this implementation, we'll analyze all laps in the event as one session
-    // Sort laps by lap time to get the best laps first
-    const sortedLaps = [...eventGroup.laps].sort(
+    // Get the primary session info from the best lap
+    const bestLap = [...eventGroup.laps].sort(
       (a, b) => a.lapTime - b.lapTime,
-    );
-    const bestLap = sortedLaps[0];
+    )[0];
 
     const sessionData = {
       eventId: eventGroup.eventId,
       eventName: eventGroup.eventName,
       session: bestLap.session,
       sessionType: bestLap.sessionType,
-      laps: eventGroup.laps, // Include all laps for analysis
+      laps: [], // Will be fetched in SessionAnalysis component
       track: bestLap.track,
       car: bestLap.car,
       startTime: eventGroup.startTime,
@@ -287,12 +287,6 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
 
     onSessionAnalysis(sessionData);
   };
-
-  // Calculate summary statistics
-  const totalEvents = eventGroups.length;
-  const bestOverallTime = Math.min(...eventGroups.map(g => g.bestLapTime));
-  const averageOverallTime =
-    eventGroups.reduce((sum, g) => sum + g.averageLapTime, 0) / totalEvents;
 
   return (
     <View style={styles.mainContainer}>
@@ -317,38 +311,6 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
               style={styles.timeRangeSelector}
             />
 
-            {/* Performance Metrics Grid */}
-            <View style={styles.metricsGrid}>
-              <MetricCard
-                title='TOTAL LAPS'
-                value={laps.length.toString()}
-                style={styles.metricCard}
-              />
-              <MetricCard
-                title='SESSIONS'
-                value={totalEvents.toString()}
-                style={styles.metricCard}
-              />
-              <MetricCard
-                title='BEST LAP'
-                value={
-                  bestOverallTime === Infinity
-                    ? '--:--.---'
-                    : formatLapTime(bestOverallTime)
-                }
-                style={styles.metricCard}
-              />
-              <MetricCard
-                title='AVG LAP'
-                value={
-                  isNaN(averageOverallTime)
-                    ? '--:--.---'
-                    : formatLapTime(averageOverallTime)
-                }
-                style={styles.metricCard}
-              />
-            </View>
-
             {/* Refresh Button */}
             <RacingButton
               title='🔄 REFRESH TELEMETRY'
@@ -367,51 +329,108 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
                   <RacingCard key={event.eventId} style={styles.eventCard}>
                     {/* Event Header */}
                     <TouchableOpacity
-                      style={styles.eventHeader}
+                      style={
+                        isMobile ? styles.mobileEventHeader : styles.eventHeader
+                      }
                       onPress={() => toggleEvent(event.eventId)}>
-                      <View style={styles.eventMainInfo}>
-                        <View style={styles.eventTitleRow}>
-                          <Text style={styles.eventTitle}>
-                            {event.primaryCar}
-                          </Text>
-                          <Text style={styles.eventTrack}>
-                            {event.primaryTrack}
-                          </Text>
-                        </View>
-                        <View style={styles.eventMetaRow}>
-                          <Text style={styles.eventDate}>
-                            {formatDate(event.startTime)}
-                          </Text>
-                          <Text style={styles.eventSessions}>
-                            {event.sessionTypes.join(' • ')}
-                          </Text>
-                        </View>
-                      </View>
+                      {isMobile ? (
+                        /* Mobile Layout */
+                        <View style={styles.mobileEventContent}>
+                          <View style={styles.mobileEventTopRow}>
+                            <View style={styles.mobileEventMainInfo}>
+                              <Text style={styles.mobileEventTitle}>
+                                {event.primaryCar}
+                              </Text>
+                              <Text style={styles.mobileEventTrack}>
+                                {event.primaryTrack}
+                              </Text>
+                            </View>
+                            <View style={styles.mobileEventActions}>
+                              {onSessionAnalysis && (
+                                <TouchableOpacity
+                                  style={styles.mobileAnalyzeButton}
+                                  onPress={() => handleSessionAnalysis(event)}>
+                                  <Text style={styles.analyzeIcon}>📊</Text>
+                                </TouchableOpacity>
+                              )}
+                              <Text style={styles.mobileExpandIcon}>
+                                {event.expanded ? '▼' : '▶'}
+                              </Text>
+                            </View>
+                          </View>
 
-                      <View style={styles.eventStats}>
-                        <View style={styles.statItem}>
-                          <Text style={styles.statNumber}>
-                            {event.totalLaps}
-                          </Text>
-                          <Text style={styles.statLabel}>LAPS</Text>
+                          <View style={styles.mobileEventStats}>
+                            <View style={styles.mobileStatItem}>
+                              <Text style={styles.mobileStatNumber}>
+                                {event.totalLaps}
+                              </Text>
+                              <Text style={styles.mobileStatLabel}>LAPS</Text>
+                            </View>
+                            <View style={styles.mobileStatItem}>
+                              <Text style={styles.mobileStatNumber}>
+                                <LapTime time={event.bestLapTime} isBest />
+                              </Text>
+                              <Text style={styles.mobileStatLabel}>BEST</Text>
+                            </View>
+                          </View>
+
+                          <View style={styles.mobileEventMeta}>
+                            <Text style={styles.mobileEventDate}>
+                              {formatDate(event.startTime)}
+                            </Text>
+                            <Text style={styles.mobileEventSessions}>
+                              {event.sessionTypes.join(' • ')}
+                            </Text>
+                          </View>
                         </View>
-                        <View style={styles.statItem}>
-                          <Text style={styles.statNumber}>
-                            <LapTime time={event.bestLapTime} isBest />
-                          </Text>
-                          <Text style={styles.statLabel}>BEST</Text>
-                        </View>
-                        {onSessionAnalysis && (
-                          <TouchableOpacity
-                            style={styles.analyzeButton}
-                            onPress={() => handleSessionAnalysis(event)}>
-                            <Text style={styles.analyzeIcon}>📊</Text>
-                          </TouchableOpacity>
-                        )}
-                        <Text style={styles.expandIcon}>
-                          {event.expanded ? '▼' : '▶'}
-                        </Text>
-                      </View>
+                      ) : (
+                        /* Desktop Layout */
+                        <>
+                          <View style={styles.eventMainInfo}>
+                            <View style={styles.eventTitleRow}>
+                              <Text style={styles.eventTitle}>
+                                {event.primaryCar}
+                              </Text>
+                              <Text style={styles.eventTrack}>
+                                {event.primaryTrack}
+                              </Text>
+                            </View>
+                            <View style={styles.eventMetaRow}>
+                              <Text style={styles.eventDate}>
+                                {formatDate(event.startTime)}
+                              </Text>
+                              <Text style={styles.eventSessions}>
+                                {event.sessionTypes.join(' • ')}
+                              </Text>
+                            </View>
+                          </View>
+
+                          <View style={styles.eventStats}>
+                            <View style={styles.statItem}>
+                              <Text style={styles.statNumber}>
+                                {event.totalLaps}
+                              </Text>
+                              <Text style={styles.statLabel}>LAPS</Text>
+                            </View>
+                            <View style={styles.statItem}>
+                              <Text style={styles.statNumber}>
+                                <LapTime time={event.bestLapTime} isBest />
+                              </Text>
+                              <Text style={styles.statLabel}>BEST</Text>
+                            </View>
+                            {onSessionAnalysis && (
+                              <TouchableOpacity
+                                style={styles.analyzeButton}
+                                onPress={() => handleSessionAnalysis(event)}>
+                                <Text style={styles.analyzeIcon}>📊</Text>
+                              </TouchableOpacity>
+                            )}
+                            <Text style={styles.expandIcon}>
+                              {event.expanded ? '▼' : '▶'}
+                            </Text>
+                          </View>
+                        </>
+                      )}
                     </TouchableOpacity>
 
                     {/* Expanded Lap Details */}
@@ -419,41 +438,100 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
                       <View style={styles.expandedContent}>
                         <RacingDivider />
 
-                        {/* Lap List Header */}
-                        <View style={styles.lapListHeader}>
-                          <Text style={styles.lapHeaderRank}>RANK</Text>
-                          <Text style={styles.lapHeaderTime}>LAP TIME</Text>
-                          <Text style={styles.lapHeaderSession}>SESSION</Text>
-                          <Text style={styles.lapHeaderStatus}>STATUS</Text>
-                        </View>
+                        {isMobile ? (
+                          /* Mobile Card Layout for Laps */
+                          <View style={styles.mobileLapsContainer}>
+                            {event.laps.map((lap, index) => (
+                              <RacingCard
+                                key={lap.id}
+                                style={styles.mobileLapCard}>
+                                <View style={styles.mobileLapHeader}>
+                                  <View style={styles.mobileLapRank}>
+                                    <Text style={styles.mobileLapRankText}>
+                                      #{index + 1}
+                                    </Text>
+                                  </View>
+                                  <View style={styles.mobileLapStatus}>
+                                    {lap.clean && (
+                                      <StatusBadge status='clean' />
+                                    )}
+                                    {lap.offtrack && (
+                                      <StatusBadge status='offtrack' />
+                                    )}
+                                    {lap.pitlane && (
+                                      <StatusBadge status='pit' />
+                                    )}
+                                    {lap.incomplete && (
+                                      <StatusBadge status='incomplete' />
+                                    )}
+                                  </View>
+                                </View>
 
-                        <RacingDivider />
-
-                        {/* Individual Laps */}
-                        {event.laps.map((lap, index) => (
-                          <View key={lap.id} style={styles.lapRow}>
-                            <Text style={styles.lapRank}>#{index + 1}</Text>
-                            <LapTime
-                              time={lap.lapTime}
-                              isBest={index === 0}
-                              style={styles.lapTimeCell}
-                            />
-                            <Text style={styles.lapSession}>
-                              {getSessionTypeName(lap.sessionType)} #
-                              {lap.session}
-                            </Text>
-                            <View style={styles.lapStatus}>
-                              {lap.clean && <StatusBadge status='clean' />}
-                              {lap.offtrack && (
-                                <StatusBadge status='offtrack' />
-                              )}
-                              {lap.pitlane && <StatusBadge status='pit' />}
-                              {lap.incomplete && (
-                                <StatusBadge status='incomplete' />
-                              )}
-                            </View>
+                                <View style={styles.mobileLapDetails}>
+                                  <View style={styles.mobileLapDetail}>
+                                    <Text style={styles.mobileLapDetailLabel}>
+                                      LAP TIME
+                                    </Text>
+                                    <LapTime
+                                      time={lap.lapTime}
+                                      isBest={index === 0}
+                                    />
+                                  </View>
+                                  <View style={styles.mobileLapDetail}>
+                                    <Text style={styles.mobileLapDetailLabel}>
+                                      SESSION
+                                    </Text>
+                                    <Text style={styles.mobileLapDetailValue}>
+                                      {getSessionTypeName(lap.sessionType)} #
+                                      {lap.session}
+                                    </Text>
+                                  </View>
+                                </View>
+                              </RacingCard>
+                            ))}
                           </View>
-                        ))}
+                        ) : (
+                          /* Desktop Table Layout */
+                          <>
+                            {/* Lap List Header */}
+                            <View style={styles.lapListHeader}>
+                              <Text style={styles.lapHeaderRank}>RANK</Text>
+                              <Text style={styles.lapHeaderTime}>LAP TIME</Text>
+                              <Text style={styles.lapHeaderSession}>
+                                SESSION
+                              </Text>
+                              <Text style={styles.lapHeaderStatus}>STATUS</Text>
+                            </View>
+
+                            <RacingDivider />
+
+                            {/* Individual Laps */}
+                            {event.laps.map((lap, index) => (
+                              <View key={lap.id} style={styles.lapRow}>
+                                <Text style={styles.lapRank}>#{index + 1}</Text>
+                                <LapTime
+                                  time={lap.lapTime}
+                                  isBest={index === 0}
+                                  style={styles.lapTimeCell}
+                                />
+                                <Text style={styles.lapSession}>
+                                  {getSessionTypeName(lap.sessionType)} #
+                                  {lap.session}
+                                </Text>
+                                <View style={styles.lapStatus}>
+                                  {lap.clean && <StatusBadge status='clean' />}
+                                  {lap.offtrack && (
+                                    <StatusBadge status='offtrack' />
+                                  )}
+                                  {lap.pitlane && <StatusBadge status='pit' />}
+                                  {lap.incomplete && (
+                                    <StatusBadge status='incomplete' />
+                                  )}
+                                </View>
+                              </View>
+                            ))}
+                          </>
+                        )}
                       </View>
                     )}
                   </RacingCard>
@@ -738,6 +816,134 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: RacingTheme.spacing.xxxl, // Extra space for scrolling
+  },
+  // Mobile Event Card Styles
+  mobileEventHeader: {
+    padding: RacingTheme.spacing.md,
+  },
+  mobileEventContent: {
+    gap: RacingTheme.spacing.md,
+  },
+  mobileEventTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  mobileEventMainInfo: {
+    flex: 1,
+  },
+  mobileEventTitle: {
+    fontSize: RacingTheme.typography.h4,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.primary,
+    marginBottom: RacingTheme.spacing.xs,
+  },
+  mobileEventTrack: {
+    fontSize: RacingTheme.typography.body,
+    color: RacingTheme.colors.textSecondary,
+  },
+  mobileEventActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: RacingTheme.spacing.sm,
+  },
+  mobileAnalyzeButton: {
+    padding: RacingTheme.spacing.sm,
+    borderRadius: RacingTheme.borderRadius.sm,
+    backgroundColor: RacingTheme.colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: RacingTheme.colors.secondary,
+  },
+  mobileExpandIcon: {
+    fontSize: RacingTheme.typography.h4,
+    color: RacingTheme.colors.primary,
+  },
+  mobileEventStats: {
+    flexDirection: 'row',
+    gap: RacingTheme.spacing.lg,
+  },
+  mobileStatItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  mobileStatNumber: {
+    fontSize: RacingTheme.typography.h3,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.text,
+    marginBottom: RacingTheme.spacing.xs,
+  },
+  mobileStatLabel: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.textTertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  mobileEventMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  mobileEventDate: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.textTertiary,
+  },
+  mobileEventSessions: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.secondary,
+    fontWeight: RacingTheme.typography.medium as any,
+  },
+  // Mobile Lap Cards Styles
+  mobileLapsContainer: {
+    gap: RacingTheme.spacing.md,
+  },
+  mobileLapCard: {
+    padding: RacingTheme.spacing.md,
+  },
+  mobileLapHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: RacingTheme.spacing.md,
+  },
+  mobileLapRank: {
+    backgroundColor: RacingTheme.colors.primary,
+    borderRadius: RacingTheme.borderRadius.sm,
+    paddingHorizontal: RacingTheme.spacing.sm,
+    paddingVertical: RacingTheme.spacing.xs,
+    minWidth: 40,
+    alignItems: 'center',
+  },
+  mobileLapRankText: {
+    fontSize: RacingTheme.typography.body,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.surface,
+    textAlign: 'center',
+  },
+  mobileLapStatus: {
+    flexDirection: 'row',
+    gap: RacingTheme.spacing.xs,
+  },
+  mobileLapDetails: {
+    gap: RacingTheme.spacing.sm,
+  },
+  mobileLapDetail: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  mobileLapDetailLabel: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    flex: 1,
+  },
+  mobileLapDetailValue: {
+    fontSize: RacingTheme.typography.body,
+    fontWeight: RacingTheme.typography.medium as any,
+    color: RacingTheme.colors.text,
+    textAlign: 'right',
+    flex: 1,
   },
 });
 

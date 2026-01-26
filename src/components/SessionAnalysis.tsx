@@ -6,6 +6,8 @@ import {
   ScrollView,
   ActivityIndicator,
   Animated,
+  TouchableOpacity,
+  Dimensions,
 } from 'react-native';
 import {
   RacingCard,
@@ -15,12 +17,8 @@ import {
   LapTime,
 } from '@/components';
 import {RacingTheme} from '@/theme';
-import {
-  SessionAnalysis as SessionAnalysisType,
-  SectorAnalysis,
-  SessionData,
-  OptimalLapAnalysis,
-} from '@/types';
+import {SessionData, Lap} from '@/types';
+import {apiClient} from '@/utils';
 
 interface SessionAnalysisProps {
   sessionData: SessionData;
@@ -31,210 +29,192 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
   sessionData,
   onBack,
 }) => {
-  const [analysis, setAnalysis] = useState<SessionAnalysisType | null>(null);
+  const [laps, setLaps] = useState<Lap[]>([]);
   const [loading, setLoading] = useState(true);
   const [fadeAnim] = useState(new Animated.Value(0));
+  const [dimensions, setDimensions] = useState(Dimensions.get('window'));
+  const [selectedLapIds, setSelectedLapIds] = useState<Set<string>>(new Set());
+  const [sortBy, setSortBy] = useState<'time' | 'lapNumber'>('time');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [expandedLaps, setExpandedLaps] = useState<Set<string>>(new Set());
 
-  const analyzeSession = useCallback(() => {
-    setLoading(true);
-
-    // Filter out laps without sector data
-    const lapsWithSectors = sessionData.laps.filter(
-      lap => lap.sectors && lap.sectors.length > 0 && lap.clean,
-    );
-
-    if (lapsWithSectors.length === 0) {
-      const emptyOptimalAnalysis: OptimalLapAnalysis = {
-        optimalLapTime: 0,
-        optimalSectorTimes: [],
-        lapComparisons: [],
-        bestAchievableLap: null,
-        averageTimeFromOptimal: 0,
-      };
-
-      setAnalysis({
-        session: sessionData,
-        sectorAnalysis: [],
-        mostInconsistentSector: null,
-        overallConsistency: 0,
-        totalLaps: sessionData.laps.length,
-        validSectorLaps: 0,
-        optimalLapAnalysis: emptyOptimalAnalysis,
-      });
-      setLoading(false);
-      return;
-    }
-
-    // Analyze each sector
-    const sectorAnalysis: SectorAnalysis[] = [];
-    const maxSectors = Math.max(
-      ...lapsWithSectors.map(lap => lap.sectors!.length),
-    );
-
-    // First pass: find optimal sector times
-    const optimalSectorTimes: number[] = [];
-    for (let sectorIndex = 0; sectorIndex < maxSectors; sectorIndex++) {
-      const sectorTimes: number[] = [];
-      lapsWithSectors.forEach(lap => {
-        if (lap.sectors && lap.sectors[sectorIndex]) {
-          sectorTimes.push(lap.sectors[sectorIndex].sectorTime);
-        }
-      });
-
-      if (sectorTimes.length > 0) {
-        const optimalTime = Math.min(...sectorTimes);
-        optimalSectorTimes.push(optimalTime);
-
-        const bestTime = Math.min(...sectorTimes);
-        const averageTime =
-          sectorTimes.reduce((a, b) => a + b, 0) / sectorTimes.length;
-        const variance =
-          sectorTimes.reduce(
-            (sum, time) => sum + Math.pow(time - averageTime, 2),
-            0,
-          ) / sectorTimes.length;
-        const standardDeviation = Math.sqrt(variance);
-        const consistency = (standardDeviation / averageTime) * 100; // Coefficient of variation as percentage
-
-        // Calculate improvement potential
-        const improvementPotential = averageTime - bestTime;
-        const improvementPercentage =
-          (improvementPotential / averageTime) * 100;
-
-        // Simple trend analysis - compare first half vs second half of laps
-        const midPoint = Math.floor(sectorTimes.length / 2);
-        const firstHalf = sectorTimes.slice(0, midPoint);
-        const secondHalf = sectorTimes.slice(midPoint);
-
-        let performanceTrend: 'improving' | 'declining' | 'stable' = 'stable';
-        if (firstHalf.length > 0 && secondHalf.length > 0) {
-          const firstHalfAvg =
-            firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
-          const secondHalfAvg =
-            secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
-          const trendDiff = firstHalfAvg - secondHalfAvg; // Positive = improving
-
-          if (trendDiff > 0.1) {
-            // More than 0.1s improvement
-            performanceTrend = 'improving';
-          } else if (trendDiff < -0.1) {
-            // More than 0.1s decline
-            performanceTrend = 'declining';
-          }
-        }
-
-        sectorAnalysis.push({
-          sectorIndex,
-          sectorNumber: sectorIndex + 1,
-          bestTime,
-          averageTime,
-          standardDeviation,
-          consistency,
-          lapCount: sectorTimes.length,
-          times: sectorTimes,
-          optimalTime,
-          improvementPotential,
-          improvementPercentage,
-          performanceTrend,
-        });
+  // Handle lap selection
+  const toggleLapSelection = (lapId: string) => {
+    setSelectedLapIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(lapId)) {
+        newSet.delete(lapId);
       } else {
-        optimalSectorTimes.push(0);
+        newSet.add(lapId);
       }
-    }
+      return newSet;
+    });
+  };
 
-    // Calculate optimal lap time (sum of best sector times)
-    const optimalLapTime = optimalSectorTimes.reduce(
-      (sum, time) => sum + time,
+  const selectAllLaps = () => {
+    setSelectedLapIds(new Set(laps.map(lap => lap.id)));
+  };
+
+  const selectCleanLaps = () => {
+    setSelectedLapIds(
+      new Set(laps.filter(lap => lap.clean).map(lap => lap.id)),
+    );
+  };
+
+  const selectUncleanLaps = () => {
+    setSelectedLapIds(
+      new Set(laps.filter(lap => !lap.clean).map(lap => lap.id)),
+    );
+  };
+
+  const clearSelection = () => {
+    setSelectedLapIds(new Set());
+  };
+
+  // Handle sort change
+  const handleSortChange = (newSortBy: 'time' | 'lapNumber') => {
+    if (sortBy === newSortBy) {
+      // Toggle direction if same sort type
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      // New sort type, default to ascending
+      setSortBy(newSortBy);
+      setSortDirection('asc');
+    }
+  };
+
+  // Get selected laps for calculations
+  const selectedLaps = laps.filter(lap => selectedLapIds.has(lap.id));
+
+  // Calculate optimal sector times from all selected laps
+  const getOptimalLapData = () => {
+    const sectorMap = new Map<number, number>();
+
+    // Find the best time for each sector across all selected laps
+    selectedLaps.forEach(lap => {
+      if (lap.sectors && Array.isArray(lap.sectors)) {
+        lap.sectors.forEach((sector: any, sectorIndex: number) => {
+          // Based on the API response, sectors are: {sectorTime: number, incomplete: boolean}
+          if (
+            sector &&
+            typeof sector.sectorTime === 'number' &&
+            sector.sectorTime > 0 &&
+            !sector.incomplete
+          ) {
+            const sectorNum = sectorIndex; // Use array index as sector number (0-based)
+            const currentBest = sectorMap.get(sectorNum);
+            if (currentBest === undefined || sector.sectorTime < currentBest) {
+              sectorMap.set(sectorNum, sector.sectorTime);
+            }
+          }
+        });
+      }
+    });
+
+    // Convert to sorted array for display (keep original sector numbers)
+    const optimalSectors = Array.from(sectorMap.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([sector, time]) => ({sector, time})); // Keep original 0-based internally
+
+    // Calculate theoretical optimal lap time
+    const optimalLapTime = optimalSectors.reduce(
+      (sum, sector) => sum + sector.time,
       0,
     );
 
-    // Create lap comparisons
-    const lapComparisons: LapComparison[] = lapsWithSectors
-      .map((lap, index) => {
-        const sectorBreakdown = lap.sectors!.map((sector, sectorIndex) => ({
-          sectorIndex,
-          sectorTime: sector.sectorTime,
-          optimalSectorTime: optimalSectorTimes[sectorIndex] || 0,
-          timeFromOptimal:
-            sector.sectorTime - (optimalSectorTimes[sectorIndex] || 0),
-        }));
+    return {optimalSectors, optimalLapTime};
+  };
 
-        const optimalLapTimeForThisLap = sectorBreakdown.reduce(
-          (sum, sector) => sum + sector.optimalSectorTime,
-          0,
-        );
+  const {optimalSectors, optimalLapTime} = getOptimalLapData();
 
-        return {
-          lapId: lap.id,
-          lapNumber: lap.lapNumber,
-          lapTime: lap.lapTime,
-          rank: index + 1,
-          optimalLapTime: optimalLapTimeForThisLap,
-          timeFromOptimal: lap.lapTime - optimalLapTimeForThisLap,
-          sectorBreakdown,
-        };
-      })
-      .sort((a, b) => a.lapTime - b.lapTime) // Sort by actual lap time
-      .map((lap, index) => ({...lap, rank: index + 1})); // Update ranks
+  // Function to format lap time delta
+  const formatLapDelta = (delta: number): string => {
+    if (delta === 0) {
+      return '±0.000';
+    }
+    const sign = delta > 0 ? '+' : '';
+    return `${sign}${delta.toFixed(3)}`;
+  };
 
-    // Find best achievable lap
-    const bestAchievableLap =
-      lapComparisons.length > 0
-        ? lapComparisons.reduce((best, current) =>
-            current.timeFromOptimal < best.timeFromOptimal ? current : best,
-          )
-        : null;
+  // Function to get delta color
+  const getDeltaColor = (delta: number) => {
+    if (delta < 0) {
+      return RacingTheme.colors.success;
+    } // Faster than optimal
+    if (delta > 0) {
+      return RacingTheme.colors.error;
+    } // Slower than optimal
+    return RacingTheme.colors.textSecondary; // Equal to optimal
+  };
 
-    // Calculate average time from optimal
-    const averageTimeFromOptimal =
-      lapComparisons.length > 0
-        ? lapComparisons.reduce((sum, lap) => sum + lap.timeFromOptimal, 0) /
-          lapComparisons.length
-        : 0;
-
-    const optimalLapAnalysis: OptimalLapAnalysis = {
-      optimalLapTime,
-      optimalSectorTimes,
-      lapComparisons,
-      bestAchievableLap,
-      averageTimeFromOptimal,
-    };
-
-    // Find most inconsistent sector
-    const sortedSectors = [...sectorAnalysis].sort(
-      (a, b) => b.consistency - a.consistency,
-    );
-    const mostInconsistentSector =
-      sortedSectors.length > 0 ? sortedSectors[0] : null;
-
-    // Calculate overall consistency (average of sector consistencies)
-    const overallConsistency =
-      sectorAnalysis.length > 0
-        ? sectorAnalysis.reduce((sum, sector) => sum + sector.consistency, 0) /
-          sectorAnalysis.length
-        : 0;
-
-    setAnalysis({
-      session: sessionData,
-      sectorAnalysis,
-      mostInconsistentSector,
-      overallConsistency,
-      totalLaps: sessionData.laps.length,
-      validSectorLaps: lapsWithSectors.length,
-      optimalLapAnalysis,
+  // Toggle lap expansion
+  const toggleLapExpansion = (lapId: string) => {
+    setExpandedLaps(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(lapId)) {
+        newSet.delete(lapId);
+      } else {
+        newSet.add(lapId);
+      }
+      return newSet;
     });
+  };
 
-    setLoading(false);
-  }, [sessionData]);
+  // Fetch all laps for the specific event
+  const fetchSessionLaps = useCallback(async () => {
+    try {
+      console.log(
+        'SessionAnalysis: Fetching laps for event:',
+        sessionData.eventId,
+      );
+
+      const response = await apiClient.getLaps({
+        limit: 1000,
+        drivers: 'me',
+        event: sessionData.eventId,
+        unclean: true,
+        group: 'none',
+      });
+
+      console.log(
+        `SessionAnalysis: API returned ${response.items.length} laps for event`,
+      );
+      console.log(
+        'SessionAnalysis: Lap numbers:',
+        response.items.map(lap => lap.lapNumber).sort((a, b) => a - b),
+      );
+
+      setLaps(response.items);
+      // Default to selecting all clean laps
+      setSelectedLapIds(
+        new Set(response.items.filter(lap => lap.clean).map(lap => lap.id)),
+      );
+      setLoading(false);
+    } catch (error) {
+      console.error('SessionAnalysis: Failed to fetch laps:', error);
+      setLaps([]);
+      setLoading(false);
+    }
+  }, [sessionData.eventId]);
 
   useEffect(() => {
-    analyzeSession();
+    fetchSessionLaps();
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: RacingTheme.animations.normal,
       useNativeDriver: true,
     }).start();
-  }, [analyzeSession, fadeAnim]);
+  }, [fetchSessionLaps, fadeAnim]);
+
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener('change', ({window}) => {
+      setDimensions(window);
+    });
+    return () => subscription?.remove();
+  }, []);
+
+  // Determine if we should use mobile layout (screen width < 768px)
+  const isMobile = dimensions.width < 768;
 
   const formatLapTime = (seconds: number): string => {
     const minutes = Math.floor(seconds / 60);
@@ -255,93 +235,12 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
     }
   };
 
-  const getConsistencyColor = (consistency: number): string => {
-    if (consistency < 2) {
-      return RacingTheme.colors.success;
-    }
-    if (consistency < 5) {
-      return RacingTheme.colors.warning;
-    }
-    return RacingTheme.colors.error;
-  };
-
-  const getTrendIcon = (
-    trend: 'improving' | 'declining' | 'stable',
-  ): string => {
-    switch (trend) {
-      case 'improving':
-        return '📈';
-      case 'declining':
-        return '📉';
-      case 'stable':
-        return '➡️';
-      default:
-        return '➡️';
-    }
-  };
-
-  const getTrendColor = (
-    trend: 'improving' | 'declining' | 'stable',
-  ): string => {
-    switch (trend) {
-      case 'improving':
-        return RacingTheme.colors.success;
-      case 'declining':
-        return RacingTheme.colors.error;
-      case 'stable':
-        return RacingTheme.colors.textSecondary;
-      default:
-        return RacingTheme.colors.textSecondary;
-    }
-  };
-
-  const getImprovementColor = (
-    potential: number,
-    maxPotential: number,
-  ): string => {
-    const ratio = potential / maxPotential;
-    if (ratio >= 0.8) {
-      return RacingTheme.colors.error;
-    } // High potential = red (needs attention)
-    if (ratio >= 0.5) {
-      return RacingTheme.colors.warning;
-    } // Medium potential = yellow
-    return RacingTheme.colors.success; // Low potential = green (doing well)
-  };
-
-  const getConsistencyLabel = (consistency: number): string => {
-    if (consistency < 2) {
-      return 'Excellent';
-    }
-    if (consistency < 5) {
-      return 'Good';
-    }
-    if (consistency < 10) {
-      return 'Fair';
-    }
-    return 'Poor';
-  };
-
   if (loading) {
     return (
       <View style={styles.mainContainer}>
         <View style={styles.centerContainer}>
           <ActivityIndicator size='large' color={RacingTheme.colors.primary} />
-          <Text style={styles.loadingText}>ANALYZING SESSION DATA...</Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (!analysis) {
-    return (
-      <View style={styles.mainContainer}>
-        <View style={styles.centerContainer}>
-          <Text style={styles.errorText}>ANALYSIS ERROR</Text>
-          <Text style={styles.errorMessage}>
-            Failed to analyze session data.
-          </Text>
-          <RacingButton title='GO BACK' onPress={onBack} />
+          <Text style={styles.loadingText}>LOADING SESSION LAPS...</Text>
         </View>
       </View>
     );
@@ -372,8 +271,7 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
                   {sessionData.car.name} • {sessionData.track.name}
                 </Text>
                 <Text style={styles.sessionDetails}>
-                  {getSessionTypeName(sessionData.sessionType)} #
-                  {sessionData.session} •{' '}
+                  {getSessionTypeName(sessionData.sessionType)} •{' '}
                   {new Date(sessionData.startTime).toLocaleDateString()}
                 </Text>
               </View>
@@ -382,460 +280,599 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
             {/* Summary Metrics */}
             <View style={styles.metricsGrid}>
               <MetricCard
-                title='TOTAL LAPS'
-                value={analysis.totalLaps.toString()}
+                title='BEST LAP'
+                value={
+                  selectedLaps.length > 0
+                    ? formatLapTime(
+                        Math.min(...selectedLaps.map(l => l.lapTime)),
+                      )
+                    : '--:--.---'
+                }
                 style={styles.metricCard}
               />
               <MetricCard
-                title='VALID SECTORS'
-                value={analysis.validSectorLaps.toString()}
+                title='AVG LAP'
+                value={
+                  selectedLaps.length > 0
+                    ? formatLapTime(
+                        selectedLaps.reduce((sum, l) => sum + l.lapTime, 0) /
+                          selectedLaps.length,
+                      )
+                    : '--:--.---'
+                }
                 style={styles.metricCard}
-              />
-              <MetricCard
-                title='SECTIONS'
-                value={analysis.sectorAnalysis.length.toString()}
-                style={styles.metricCard}
-              />
-              <MetricCard
-                title='OVERALL CONSISTENCY'
-                value={`${analysis.overallConsistency.toFixed(1)}%`}
-                style={[
-                  styles.metricCard,
-                  {
-                    borderColor: getConsistencyColor(
-                      analysis.overallConsistency,
-                    ),
-                  },
-                ]}
               />
             </View>
 
-            {analysis.sectorAnalysis.length === 0 ? (
-              <RacingCard style={styles.noDataCard}>
-                <Text style={styles.noDataIcon}>📊</Text>
-                <Text style={styles.noDataTitle}>NO SECTOR DATA</Text>
-                <Text style={styles.noDataMessage}>
-                  This session doesn't have sector timing data available for
-                  analysis. Sector data is required to measure section
-                  variability.
-                </Text>
-              </RacingCard>
-            ) : (
-              <>
-                {/* Optimal Lap Analysis */}
-                {analysis.optimalLapAnalysis.optimalLapTime > 0 && (
-                  <RacingCard style={styles.optimalCard}>
-                    <View style={styles.optimalHeader}>
-                      <Text style={styles.optimalTitle}>
-                        🏁 OPTIMAL LAP ANALYSIS
-                      </Text>
-                      <Text style={styles.optimalBadge}>THEORETICAL BEST</Text>
-                    </View>
-                    <RacingDivider />
-                    <View style={styles.optimalContent}>
-                      <View style={styles.optimalMetrics}>
-                        <View style={styles.optimalMetric}>
-                          <Text style={styles.optimalMetricLabel}>
-                            Optimal Lap Time
-                          </Text>
-                          <Text style={styles.optimalMetricValue}>
-                            <LapTime
-                              time={analysis.optimalLapAnalysis.optimalLapTime}
-                            />
-                          </Text>
-                        </View>
-                        <View style={styles.optimalMetric}>
-                          <Text style={styles.optimalMetricLabel}>
-                            Best Achievable
-                          </Text>
-                          <Text style={styles.optimalMetricValue}>
-                            {analysis.optimalLapAnalysis.bestAchievableLap ? (
-                              <>
-                                <LapTime
-                                  time={
-                                    analysis.optimalLapAnalysis
-                                      .bestAchievableLap.lapTime
-                                  }
-                                />
-                                <Text style={styles.optimalGapText}>
-                                  (+
-                                  {formatLapTime(
-                                    Math.abs(
-                                      analysis.optimalLapAnalysis
-                                        .bestAchievableLap.timeFromOptimal,
-                                    ),
-                                  )}
-                                  )
-                                </Text>
-                              </>
-                            ) : (
-                              'N/A'
-                            )}
-                          </Text>
-                        </View>
-                        <View style={styles.optimalMetric}>
-                          <Text style={styles.optimalMetricLabel}>
-                            Avg Gap to Optimal
-                          </Text>
-                          <Text
-                            style={[
-                              styles.optimalMetricValue,
-                              styles.gapValue,
-                            ]}>
-                            +
-                            {formatLapTime(
-                              analysis.optimalLapAnalysis
-                                .averageTimeFromOptimal,
-                            )}
-                          </Text>
-                        </View>
-                      </View>
-                      <Text style={styles.optimalDescription}>
-                        The optimal lap combines the best sector time from each
-                        section across all laps. This represents the theoretical
-                        fastest lap if you could perfectly combine your best
-                        sector performances.
-                      </Text>
-                    </View>
+            {/* Optimal Sector Analysis */}
+            {optimalSectors.length > 0 && (
+              <View style={styles.optimalSection}>
+                <Text style={styles.sectionTitle}>OPTIMAL LAP ANALYSIS</Text>
+
+                <View
+                  style={
+                    isMobile
+                      ? styles.optimalCombinedRowMobile
+                      : styles.optimalCombinedRow
+                  }>
+                  {/* Theoretical Optimal Lap */}
+                  <RacingCard style={styles.optimalLapCard}>
+                    <Text style={styles.optimalLapTitle}>
+                      THEORETICAL BEST LAP
+                    </Text>
+                    <Text style={styles.optimalLapTime}>
+                      {formatLapTime(optimalLapTime)}
+                    </Text>
+                    <Text style={styles.optimalLapLabel}>
+                      Best sectors combined
+                    </Text>
                   </RacingCard>
-                )}
 
-                {/* Improvement Priority Section */}
-                {analysis.sectorAnalysis.length > 0 && (
-                  <RacingCard style={styles.priorityCard}>
-                    <View style={styles.highlightHeader}>
-                      <Text style={styles.highlightTitle}>
-                        🎯 IMPROVEMENT PRIORITIES
-                      </Text>
-                      <Text style={styles.highlightBadge}>FOCUS AREAS</Text>
-                    </View>
-                    <RacingDivider />
-                    <View style={styles.priorityContent}>
-                      <Text style={styles.priorityTitle}>
-                        Sections ranked by improvement potential:
-                      </Text>
-
-                      {analysis.sectorAnalysis
-                        .sort(
-                          (a, b) =>
-                            b.improvementPotential - a.improvementPotential,
-                        )
-                        .slice(0, 3) // Top 3 improvement opportunities
-                        .map((sector, index) => (
+                  {/* Optimal Sector Times */}
+                  <View style={styles.sectorsContainer}>
+                    <Text style={styles.sectorsTitle}>BEST SECTOR TIMES</Text>
+                    {isMobile ? (
+                      <View style={styles.mobileSectorsList}>
+                        {optimalSectors.map(sector => (
                           <View
-                            key={sector.sectorIndex}
-                            style={styles.priorityItem}>
-                            <View style={styles.priorityRank}>
-                              <Text style={styles.priorityNumber}>
-                                #{index + 1}
+                            key={sector.sector}
+                            style={styles.mobileSectorItem}>
+                            <View style={styles.mobileSectorHeader}>
+                              <Text style={styles.mobileSectorNumber}>
+                                S{sector.sector}
                               </Text>
-                            </View>
-                            <View style={styles.priorityDetails}>
-                              <Text style={styles.prioritySection}>
-                                Section {sector.sectorNumber}
-                              </Text>
-                              <Text style={styles.priorityGap}>
-                                {formatLapTime(sector.improvementPotential)}{' '}
-                                faster possible (
-                                {sector.improvementPercentage.toFixed(1)}%
-                                improvement)
-                              </Text>
-                              <Text style={styles.priorityTrend}>
-                                Trend: {sector.performanceTrend}{' '}
-                                {getTrendIcon(sector.performanceTrend)}
+                              <Text style={styles.mobileSectorTime}>
+                                {formatLapTime(sector.time)}
                               </Text>
                             </View>
                           </View>
                         ))}
-
-                      <View style={styles.prioritySummary}>
-                        <Text style={styles.prioritySummaryText}>
-                          🎯{' '}
-                          <Text style={styles.boldText}>
-                            Focus on these sections
-                          </Text>{' '}
-                          to gain the most lap time. Consistent improvement in
-                          these areas could shave{' '}
-                          <Text style={styles.boldText}>
-                            {formatLapTime(
-                              analysis.sectorAnalysis
-                                .sort(
-                                  (a, b) =>
-                                    b.improvementPotential -
-                                    a.improvementPotential,
-                                )
-                                .slice(0, 3)
-                                .reduce(
-                                  (sum, sector) =>
-                                    sum + sector.improvementPotential,
-                                  0,
-                                ),
-                            )}
-                          </Text>{' '}
-                          off your average lap time.
-                        </Text>
                       </View>
-                    </View>
-                  </RacingCard>
-                )}
-
-                {/* Most Inconsistent Section */}
-                {analysis.mostInconsistentSector && (
-                  <RacingCard style={styles.highlightCard}>
-                    <View style={styles.highlightHeader}>
-                      <Text style={styles.highlightTitle}>
-                        🚩 MOST INCONSISTENT SECTION
-                      </Text>
-                      <Text style={styles.highlightBadge}>CRITICAL</Text>
-                    </View>
-                    <RacingDivider />
-                    <View style={styles.sectorDetails}>
-                      <View style={styles.sectorMain}>
-                        <Text style={styles.sectorNumber}>
-                          Section {analysis.mostInconsistentSector.sectorNumber}
-                        </Text>
-                        <View style={styles.sectorStats}>
-                          <View style={styles.stat}>
-                            <Text style={styles.statLabel}>Best Time</Text>
-                            <Text style={styles.statValue}>
-                              <LapTime
-                                time={analysis.mostInconsistentSector.bestTime}
-                              />
+                    ) : (
+                      <View style={styles.desktopSectorsGrid}>
+                        {optimalSectors.map(sector => (
+                          <View
+                            key={sector.sector}
+                            style={styles.desktopSectorCard}>
+                            <Text style={styles.desktopSectorNumber}>
+                              S{sector.sector}
+                            </Text>
+                            <Text style={styles.desktopSectorTime}>
+                              {formatLapTime(sector.time)}
                             </Text>
                           </View>
-                          <View style={styles.stat}>
-                            <Text style={styles.statLabel}>Average</Text>
-                            <Text style={styles.statValue}>
-                              {formatLapTime(
-                                analysis.mostInconsistentSector.averageTime,
-                              )}
-                            </Text>
-                          </View>
-                          <View style={styles.stat}>
-                            <Text style={styles.statLabel}>Consistency</Text>
-                            <Text
-                              style={[
-                                styles.statValue,
-                                {
-                                  color: getConsistencyColor(
-                                    analysis.mostInconsistentSector.consistency,
-                                  ),
-                                },
-                              ]}>
-                              {analysis.mostInconsistentSector.consistency.toFixed(
-                                1,
-                              )}
-                              %
-                            </Text>
-                          </View>
-                        </View>
+                        ))}
                       </View>
-                      <View style={styles.consistencyIndicator}>
-                        <Text style={styles.consistencyText}>
-                          {getConsistencyLabel(
-                            analysis.mostInconsistentSector.consistency,
-                          )}
-                        </Text>
-                      </View>
-                    </View>
-                  </RacingCard>
-                )}
+                    )}
+                  </View>
+                </View>
+              </View>
+            )}
 
-                {/* Lap Comparison Table */}
-                {analysis.optimalLapAnalysis.lapComparisons.length > 0 && (
-                  <View style={styles.comparisonSection}>
-                    <Text style={styles.sectionTitle}>
-                      LAP COMPARISON TO OPTIMAL
+            {/* Lap Selection Controls */}
+            <View style={styles.selectionSection}>
+              <Text style={styles.sectionTitle}>LAP SELECTION</Text>
+              <View style={styles.selectionControls}>
+                <RacingButton
+                  title='SELECT ALL'
+                  onPress={selectAllLaps}
+                  style={styles.selectionButton}
+                />
+                <RacingButton
+                  title='CLEAN LAPS'
+                  onPress={selectCleanLaps}
+                  style={styles.selectionButton}
+                />
+                <RacingButton
+                  title='UNCLEAN LAPS'
+                  onPress={selectUncleanLaps}
+                  style={styles.selectionButton}
+                />
+                <RacingButton
+                  title='CLEAR ALL'
+                  onPress={clearSelection}
+                  style={styles.selectionButton}
+                />
+              </View>
+              <Text style={styles.selectionInfo}>
+                {selectedLaps.length} of {laps.length} laps selected for
+                analysis
+              </Text>
+            </View>
+
+            {/* Lap Comparison */}
+            <View style={styles.comparisonSection}>
+              <Text style={styles.sectionTitle}>
+                LAP COMPARISON ({laps.length} LAPS)
+              </Text>
+
+              {/* Sort Controls */}
+              <View style={styles.sortControls}>
+                <Text style={styles.sortLabel}>SORT BY:</Text>
+                <View style={styles.sortButtons}>
+                  <TouchableOpacity
+                    style={[
+                      styles.sortButton,
+                      sortBy === 'time' && styles.sortButtonActive,
+                    ]}
+                    onPress={() => handleSortChange('time')}>
+                    <Text
+                      style={[
+                        styles.sortButtonText,
+                        sortBy === 'time' && styles.sortButtonTextActive,
+                      ]}>
+                      TIME{' '}
+                      {sortBy === 'time' &&
+                        (sortDirection === 'asc' ? '↑' : '↓')}
                     </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.sortButton,
+                      sortBy === 'lapNumber' && styles.sortButtonActive,
+                    ]}
+                    onPress={() => handleSortChange('lapNumber')}>
+                    <Text
+                      style={[
+                        styles.sortButtonText,
+                        sortBy === 'lapNumber' && styles.sortButtonTextActive,
+                      ]}>
+                      LAP #{' '}
+                      {sortBy === 'lapNumber' &&
+                        (sortDirection === 'asc' ? '↑' : '↓')}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
 
-                    <RacingCard style={styles.tableCard}>
-                      {/* Comparison Table Header */}
-                      <View style={styles.tableHeader}>
-                        <Text style={styles.headerCell}>RANK</Text>
-                        <Text style={styles.headerCell}>LAP #</Text>
-                        <Text style={styles.headerCell}>LAP TIME</Text>
-                        <Text style={styles.headerCell}>OPTIMAL</Text>
-                        <Text style={styles.headerCell}>GAP</Text>
-                      </View>
+              {isMobile ? (
+                /* Mobile Card Layout */
+                <View style={styles.mobileLapsContainer}>
+                  {(() => {
+                    // Sort laps based on current sort settings
+                    const sortedLaps = [...laps].sort((a, b) => {
+                      let comparison = 0;
 
-                      <RacingDivider />
+                      if (sortBy === 'time') {
+                        comparison = a.lapTime - b.lapTime;
+                      } else if (sortBy === 'lapNumber') {
+                        comparison = a.lapNumber - b.lapNumber;
+                      }
 
-                      {/* Comparison Table Rows */}
-                      {analysis.optimalLapAnalysis.lapComparisons
-                        .slice(0, 10) // Show top 10 laps
-                        .map((lap, index) => (
-                          <View key={lap.lapId}>
-                            <View style={styles.tableRow}>
-                              <Text style={styles.cell}>#{lap.rank}</Text>
-                              <Text style={styles.cell}>{lap.lapNumber}</Text>
-                              <Text style={styles.cell}>
+                      return sortDirection === 'asc' ? comparison : -comparison;
+                    });
+
+                    return sortedLaps.map((lap, index) => {
+                      const isSelected = selectedLapIds.has(lap.id);
+                      const isExpanded = expandedLaps.has(lap.id);
+                      const lapDelta =
+                        optimalLapTime > 0 ? lap.lapTime - optimalLapTime : 0;
+                      return (
+                        <View key={lap.id}>
+                          <TouchableOpacity
+                            onPress={() => toggleLapSelection(lap.id)}
+                            activeOpacity={0.7}>
+                            <RacingCard
+                              style={
+                                isSelected
+                                  ? {
+                                      ...styles.mobileLapCard,
+                                      ...styles.mobileLapCardSelected,
+                                    }
+                                  : styles.mobileLapCard
+                              }>
+                              <View style={styles.mobileLapHeader}>
+                                <View
+                                  style={[
+                                    styles.mobileLapRank,
+                                    isSelected && styles.mobileLapRankSelected,
+                                  ]}>
+                                  <Text
+                                    style={[
+                                      styles.mobileLapRankText,
+                                      isSelected &&
+                                        styles.mobileLapRankTextSelected,
+                                    ]}>
+                                    #{index + 1}
+                                  </Text>
+                                </View>
+
+                                <TouchableOpacity
+                                  style={[
+                                    styles.mobileExpandButton,
+                                    isExpanded &&
+                                      styles.mobileExpandButtonActive,
+                                  ]}
+                                  onPress={() => toggleLapExpansion(lap.id)}>
+                                  <Text
+                                    style={[
+                                      styles.mobileExpandIcon,
+                                      isExpanded &&
+                                        styles.mobileExpandIconActive,
+                                    ]}>
+                                    {isExpanded ? '▼' : '▶'}
+                                  </Text>
+                                  <Text
+                                    style={[
+                                      styles.mobileExpandText,
+                                      isExpanded &&
+                                        styles.mobileExpandTextActive,
+                                    ]}>
+                                    {isExpanded ? 'COLLAPSE' : 'EXPAND'}
+                                  </Text>
+                                </TouchableOpacity>
+
+                                <View style={styles.mobileLapStatus}>
+                                  {lap.clean ? (
+                                    <Text
+                                      style={[
+                                        styles.mobileStatusBadge,
+                                        styles.mobileCleanBadge,
+                                      ]}>
+                                      ✓ CLEAN
+                                    </Text>
+                                  ) : (
+                                    <Text
+                                      style={[
+                                        styles.mobileStatusBadge,
+                                        styles.mobileUncleanBadge,
+                                      ]}>
+                                      ⚠ OFF-TRACK
+                                    </Text>
+                                  )}
+                                </View>
+                              </View>
+
+                              <View style={styles.mobileLapDetails}>
+                                <View style={styles.mobileLapDetail}>
+                                  <Text style={styles.mobileLapDetailLabel}>
+                                    LAP NUMBER
+                                  </Text>
+                                  <Text style={styles.mobileLapDetailValue}>
+                                    {lap.lapNumber}
+                                  </Text>
+                                </View>
+                                <View style={styles.mobileLapDetail}>
+                                  <Text style={styles.mobileLapDetailLabel}>
+                                    LAP TIME
+                                  </Text>
+                                  <View style={styles.mobileLapTimeRow}>
+                                    <LapTime
+                                      time={lap.lapTime}
+                                      isBest={index === 0}
+                                    />
+                                    {optimalLapTime > 0 && (
+                                      <Text
+                                        style={[
+                                          styles.mobileLapDelta,
+                                          {color: getDeltaColor(lapDelta)},
+                                        ]}>
+                                        {formatLapDelta(lapDelta)}
+                                      </Text>
+                                    )}
+                                  </View>
+                                </View>
+                              </View>
+                            </RacingCard>
+                          </TouchableOpacity>
+
+                          {/* Expanded Sector Details */}
+                          {isExpanded && (
+                            <RacingCard style={styles.mobileExpandedCard}>
+                              <Text style={styles.mobileExpandedTitle}>
+                                SECTOR BREAKDOWN
+                              </Text>
+                              {lap.sectors &&
+                              Array.isArray(lap.sectors) &&
+                              lap.sectors.length > 0 ? (
+                                <View style={styles.mobileSectorBreakdown}>
+                                  {lap.sectors.map(
+                                    (sector: any, sectorIndex: number) => {
+                                      if (
+                                        !sector ||
+                                        typeof sector.sectorTime !== 'number' ||
+                                        sector.incomplete
+                                      ) {
+                                        return null;
+                                      }
+
+                                      const sectorNum = sectorIndex; // Use array index as sector number
+                                      const optimalSector = optimalSectors.find(
+                                        s => s.sector === sectorNum,
+                                      );
+                                      const sectorDelta = optimalSector
+                                        ? sector.sectorTime - optimalSector.time
+                                        : 0;
+
+                                      return (
+                                        <View
+                                          key={sectorNum}
+                                          style={styles.mobileSectorRow}>
+                                          <Text
+                                            style={styles.mobileSectorLabel}>
+                                            S{sectorNum + 1}
+                                          </Text>
+                                          <Text style={styles.mobileSectorTime}>
+                                            {formatLapTime(sector.sectorTime)}
+                                          </Text>
+                                          {optimalSector && (
+                                            <Text
+                                              style={[
+                                                styles.mobileSectorDelta,
+                                                {
+                                                  color:
+                                                    getDeltaColor(sectorDelta),
+                                                },
+                                              ]}>
+                                              {formatLapDelta(sectorDelta)}
+                                            </Text>
+                                          )}
+                                        </View>
+                                      );
+                                    },
+                                  )}
+                                </View>
+                              ) : (
+                                <Text style={styles.mobileNoData}>
+                                  No sector data available
+                                </Text>
+                              )}
+                            </RacingCard>
+                          )}
+                        </View>
+                      );
+                    });
+                  })()}
+                </View>
+              ) : (
+                /* Desktop Table Layout */
+                <RacingCard style={styles.tableCard}>
+                  {/* Comparison Table Header */}
+                  <View style={styles.tableHeader}>
+                    <Text style={styles.headerCell}>RANK</Text>
+                    <TouchableOpacity
+                      style={styles.headerCellTouchable}
+                      onPress={() => handleSortChange('lapNumber')}>
+                      <Text
+                        style={[
+                          styles.headerCell,
+                          sortBy === 'lapNumber' && styles.headerCellActive,
+                        ]}>
+                        LAP #{' '}
+                        {sortBy === 'lapNumber' &&
+                          (sortDirection === 'asc' ? '↑' : '↓')}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.headerCellTouchable}
+                      onPress={() => handleSortChange('time')}>
+                      <Text
+                        style={[
+                          styles.headerCell,
+                          sortBy === 'time' && styles.headerCellActive,
+                        ]}>
+                        LAP TIME{' '}
+                        {sortBy === 'time' &&
+                          (sortDirection === 'asc' ? '↑' : '↓')}
+                      </Text>
+                    </TouchableOpacity>
+                    <Text style={styles.headerCell}>DELTA</Text>
+                    <Text style={styles.headerCell}>STATUS</Text>
+                  </View>
+
+                  <RacingDivider />
+
+                  {/* Comparison Table Rows */}
+                  {(() => {
+                    // Sort laps based on current sort settings
+                    const sortedLaps = [...laps].sort((a, b) => {
+                      let comparison = 0;
+
+                      if (sortBy === 'time') {
+                        comparison = a.lapTime - b.lapTime;
+                      } else if (sortBy === 'lapNumber') {
+                        comparison = a.lapNumber - b.lapNumber;
+                      }
+
+                      return sortDirection === 'asc' ? comparison : -comparison;
+                    });
+
+                    return sortedLaps.map((lap, index) => {
+                      const isSelected = selectedLapIds.has(lap.id);
+                      const isExpanded = expandedLaps.has(lap.id);
+                      const lapDelta =
+                        optimalLapTime > 0 ? lap.lapTime - optimalLapTime : 0;
+                      return (
+                        <View key={lap.id}>
+                          <View
+                            style={
+                              isSelected
+                                ? {
+                                    ...styles.tableRow,
+                                    ...styles.tableRowSelected,
+                                  }
+                                : styles.tableRow
+                            }>
+                            <TouchableOpacity
+                              style={styles.cell}
+                              onPress={() => toggleLapSelection(lap.id)}
+                              activeOpacity={0.7}>
+                              <Text
+                                style={[
+                                  styles.cell,
+                                  isSelected && styles.cellSelected,
+                                ]}>
+                                #{index + 1}
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[
+                                styles.tableRowContent,
+                                isExpanded && styles.tableRowContentExpanded,
+                              ]}
+                              onPress={() => toggleLapExpansion(lap.id)}
+                              activeOpacity={0.7}>
+                              <Text
+                                style={[
+                                  styles.cell,
+                                  isSelected && styles.cellSelected,
+                                ]}>
+                                {lap.lapNumber}
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.cell,
+                                  isSelected && styles.cellSelected,
+                                ]}>
                                 <LapTime
                                   time={lap.lapTime}
                                   isBest={index === 0}
                                 />
                               </Text>
-                              <Text style={styles.cell}>
-                                <LapTime time={lap.optimalLapTime} />
-                              </Text>
                               <Text
                                 style={[
-                                  styles.cell,
-                                  styles.gapCell,
-                                  {
-                                    color:
-                                      lap.timeFromOptimal > 0
-                                        ? RacingTheme.colors.error
-                                        : lap.timeFromOptimal < 0
-                                        ? RacingTheme.colors.success
-                                        : RacingTheme.colors.textSecondary,
-                                  },
+                                  styles.cellDelta,
+                                  isSelected && styles.cellSelected,
+                                  {color: getDeltaColor(lapDelta)},
                                 ]}>
-                                {lap.timeFromOptimal >= 0 ? '+' : ''}
-                                {formatLapTime(Math.abs(lap.timeFromOptimal))}
+                                {optimalLapTime > 0
+                                  ? formatLapDelta(lapDelta)
+                                  : '--'}
                               </Text>
+                              <View style={styles.cell}>
+                                {lap.clean ? (
+                                  <Text
+                                    style={[
+                                      styles.statusBadge,
+                                      styles.cleanBadge,
+                                    ]}>
+                                    ✓ CLEAN
+                                  </Text>
+                                ) : (
+                                  <Text
+                                    style={[
+                                      styles.statusBadge,
+                                      styles.uncleanBadge,
+                                    ]}>
+                                    ⚠ OFF-TRACK
+                                  </Text>
+                                )}
+                              </View>
+                              <View style={styles.expandCell}>
+                                <Text
+                                  style={[
+                                    styles.expandIcon,
+                                    isExpanded && styles.expandIconExpanded,
+                                  ]}>
+                                  {isExpanded ? '▼' : '▶'}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+                          </View>
+
+                          {/* Expanded Sector Details for Desktop */}
+                          {isExpanded && (
+                            <View style={styles.expandedSectorRow}>
+                              <RacingDivider />
+                              <View style={styles.expandedSectorContent}>
+                                <Text style={styles.expandedSectorTitle}>
+                                  SECTOR BREAKDOWN
+                                </Text>
+                                {lap.sectors &&
+                                Array.isArray(lap.sectors) &&
+                                lap.sectors.length > 0 ? (
+                                  <View style={styles.expandedSectorGrid}>
+                                    {lap.sectors.map(
+                                      (sector: any, sectorIndex: number) => {
+                                        if (
+                                          !sector ||
+                                          typeof sector.sectorTime !==
+                                            'number' ||
+                                          sector.incomplete
+                                        ) {
+                                          return null;
+                                        }
+
+                                        const sectorNum = sectorIndex; // Use array index as sector number
+                                        const optimalSector =
+                                          optimalSectors.find(
+                                            s => s.sector === sectorNum,
+                                          );
+                                        const sectorDelta = optimalSector
+                                          ? sector.sectorTime -
+                                            optimalSector.time
+                                          : 0;
+
+                                        return (
+                                          <View
+                                            key={sectorNum}
+                                            style={styles.expandedSectorItem}>
+                                            <Text
+                                              style={
+                                                styles.expandedSectorLabel
+                                              }>
+                                              S{sectorNum + 1}
+                                            </Text>
+                                            <Text
+                                              style={styles.expandedSectorTime}>
+                                              {formatLapTime(sector.sectorTime)}
+                                            </Text>
+                                            {optimalSector && (
+                                              <Text
+                                                style={[
+                                                  styles.expandedSectorDelta,
+                                                  {
+                                                    color:
+                                                      getDeltaColor(
+                                                        sectorDelta,
+                                                      ),
+                                                  },
+                                                ]}>
+                                                {formatLapDelta(sectorDelta)}
+                                              </Text>
+                                            )}
+                                          </View>
+                                        );
+                                      },
+                                    )}
+                                  </View>
+                                ) : (
+                                  <Text style={styles.expandedNoData}>
+                                    No sector data available
+                                  </Text>
+                                )}
+                              </View>
                             </View>
-                            {index <
-                              Math.min(
-                                analysis.optimalLapAnalysis.lapComparisons
-                                  .length - 1,
-                                9,
-                              ) && <RacingDivider />}
-                          </View>
-                        ))}
-
-                      {analysis.optimalLapAnalysis.lapComparisons.length >
-                        10 && (
-                        <View style={styles.moreLapsIndicator}>
-                          <Text style={styles.moreLapsText}>
-                            ... and{' '}
-                            {analysis.optimalLapAnalysis.lapComparisons.length -
-                              10}{' '}
-                            more laps
-                          </Text>
-                        </View>
-                      )}
-                    </RacingCard>
-                  </View>
-                )}
-
-                {/* Improvement Potential Chart */}
-                <View style={styles.chartSection}>
-                  <Text style={styles.sectionTitle}>
-                    IMPROVEMENT POTENTIAL BY SECTION
-                  </Text>
-                  <Text style={styles.chartSubtitle}>
-                    Bars show potential lap time gain (seconds)
-                  </Text>
-
-                  <RacingCard style={styles.chartCard}>
-                    {analysis.sectorAnalysis
-                      .sort(
-                        (a, b) =>
-                          b.improvementPotential - a.improvementPotential,
-                      )
-                      .map(sector => {
-                        const maxPotential = Math.max(
-                          ...analysis.sectorAnalysis.map(
-                            s => s.improvementPotential,
-                          ),
-                        );
-                        const barWidth =
-                          maxPotential > 0
-                            ? (sector.improvementPotential / maxPotential) * 100
-                            : 0;
-
-                        return (
-                          <View
-                            key={sector.sectorIndex}
-                            style={styles.chartRow}>
-                            <Text style={styles.chartLabel}>
-                              #{sector.sectorNumber}
-                            </Text>
-                            <View style={styles.chartBar}>
-                              <View
-                                style={[
-                                  styles.chartBarFill,
-                                  {
-                                    width: `${barWidth}%`,
-                                    backgroundColor: getImprovementColor(
-                                      sector.improvementPotential,
-                                      maxPotential,
-                                    ),
-                                  },
-                                ]}
-                              />
-                            </View>
-                            <Text style={styles.chartValue}>
-                              -{formatLapTime(sector.improvementPotential)}
-                            </Text>
-                          </View>
-                        );
-                      })}
-                  </RacingCard>
-                </View>
-
-                {/* Section Analysis Table */}
-                <View style={styles.sectionsSection}>
-                  <Text style={styles.sectionTitle}>
-                    SECTION PERFORMANCE ANALYSIS
-                  </Text>
-
-                  <RacingCard style={styles.tableCard}>
-                    {/* Table Header */}
-                    <View style={styles.tableHeader}>
-                      <Text style={styles.headerCell}>SECTION</Text>
-                      <Text style={styles.headerCell}>BEST</Text>
-                      <Text style={styles.headerCell}>AVG</Text>
-                      <Text style={styles.headerCell}>IMPROVEMENT</Text>
-                      <Text style={styles.headerCell}>TREND</Text>
-                    </View>
-
-                    <RacingDivider />
-
-                    {/* Table Rows */}
-                    {analysis.sectorAnalysis
-                      .sort(
-                        (a, b) =>
-                          b.improvementPotential - a.improvementPotential,
-                      ) // Most improvement potential first
-                      .map((sector, index) => (
-                        <View key={sector.sectorIndex}>
-                          <View style={styles.tableRow}>
-                            <Text style={styles.cell}>
-                              #{sector.sectorNumber}
-                            </Text>
-                            <Text style={[styles.cell, styles.bestCell]}>
-                              <LapTime time={sector.bestTime} />
-                            </Text>
-                            <Text style={styles.cell}>
-                              {formatLapTime(sector.averageTime)}
-                            </Text>
-                            <Text style={[styles.cell, styles.improvementCell]}>
-                              -{formatLapTime(sector.improvementPotential)}
-                              <Text style={styles.improvementPercent}>
-                                ({sector.improvementPercentage.toFixed(1)}%)
-                              </Text>
-                            </Text>
-                            <Text
-                              style={[
-                                styles.cell,
-                                styles.trendCell,
-                                {
-                                  color: getTrendColor(sector.performanceTrend),
-                                },
-                              ]}>
-                              {getTrendIcon(sector.performanceTrend)}
-                            </Text>
-                          </View>
-                          {index < analysis.sectorAnalysis.length - 1 && (
-                            <RacingDivider />
                           )}
+
+                          {index < sortedLaps.length - 1 && <RacingDivider />}
                         </View>
-                      ))}
-                  </RacingCard>
-                </View>
-              </>
-            )}
+                      );
+                    });
+                  })()}
+                </RacingCard>
+              )}
+            </View>
 
             <View style={styles.bottomSpacing} />
           </View>
@@ -900,87 +937,7 @@ const styles = StyleSheet.create({
     fontSize: RacingTheme.typography.body,
     color: RacingTheme.colors.textSecondary,
   },
-  metricsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: RacingTheme.spacing.lg,
-  },
-  metricCard: {
-    width: '48%',
-    marginBottom: RacingTheme.spacing.md,
-  },
-  highlightCard: {
-    marginBottom: RacingTheme.spacing.lg,
-    borderWidth: 2,
-    borderColor: RacingTheme.colors.warning,
-  },
-  highlightHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: RacingTheme.spacing.sm,
-  },
-  highlightTitle: {
-    fontSize: RacingTheme.typography.h4,
-    fontWeight: RacingTheme.typography.bold as any,
-    color: RacingTheme.colors.warning,
-  },
-  highlightBadge: {
-    fontSize: RacingTheme.typography.small,
-    color: RacingTheme.colors.warning,
-    fontWeight: RacingTheme.typography.bold as any,
-    backgroundColor: RacingTheme.colors.surface,
-    paddingHorizontal: RacingTheme.spacing.sm,
-    paddingVertical: RacingTheme.spacing.xs,
-    borderRadius: RacingTheme.borderRadius.sm,
-    borderWidth: 1,
-    borderColor: RacingTheme.colors.warning,
-  },
-  sectorDetails: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  sectorMain: {
-    flex: 1,
-  },
-  sectorNumber: {
-    fontSize: RacingTheme.typography.h3,
-    fontWeight: RacingTheme.typography.bold as any,
-    color: RacingTheme.colors.text,
-    marginBottom: RacingTheme.spacing.sm,
-  },
-  sectorStats: {
-    flexDirection: 'row',
-    gap: RacingTheme.spacing.md,
-  },
-  stat: {
-    alignItems: 'center',
-  },
-  statLabel: {
-    fontSize: RacingTheme.typography.small,
-    color: RacingTheme.colors.textTertiary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: RacingTheme.spacing.xs,
-  },
-  statValue: {
-    fontSize: RacingTheme.typography.body,
-    fontWeight: RacingTheme.typography.bold as any,
-    color: RacingTheme.colors.text,
-  },
-  consistencyIndicator: {
-    alignItems: 'center',
-  },
-  consistencyText: {
-    fontSize: RacingTheme.typography.caption,
-    fontWeight: RacingTheme.typography.medium as any,
-    color: RacingTheme.colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  sectionsSection: {
+  comparisonSection: {
     marginBottom: RacingTheme.spacing.lg,
   },
   sectionTitle: {
@@ -1006,6 +963,12 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     textAlign: 'center',
   },
+  headerCellTouchable: {
+    flex: 1,
+  },
+  headerCellActive: {
+    color: RacingTheme.colors.primary,
+  },
   tableRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1017,26 +980,21 @@ const styles = StyleSheet.create({
     color: RacingTheme.colors.textSecondary,
     textAlign: 'center',
   },
-  noDataCard: {
-    alignItems: 'center',
-    padding: RacingTheme.spacing.xl,
-  },
-  noDataIcon: {
-    fontSize: RacingTheme.typography.h1,
-    marginBottom: RacingTheme.spacing.md,
-  },
-  noDataTitle: {
-    fontSize: RacingTheme.typography.h3,
-    fontWeight: RacingTheme.typography.bold as any,
-    color: RacingTheme.colors.text,
+  statusBadge: {
+    fontSize: RacingTheme.typography.caption,
+    fontWeight: RacingTheme.typography.medium as any,
     textAlign: 'center',
-    marginBottom: RacingTheme.spacing.sm,
+    paddingHorizontal: RacingTheme.spacing.xs,
+    paddingVertical: RacingTheme.spacing.xs,
+    borderRadius: RacingTheme.borderRadius.sm,
   },
-  noDataMessage: {
-    fontSize: RacingTheme.typography.body,
-    color: RacingTheme.colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
+  cleanBadge: {
+    backgroundColor: RacingTheme.colors.success,
+    color: RacingTheme.colors.surface,
+  },
+  uncleanBadge: {
+    backgroundColor: RacingTheme.colors.warning,
+    color: RacingTheme.colors.surface,
   },
   loadingText: {
     marginTop: RacingTheme.spacing.md,
@@ -1044,236 +1002,451 @@ const styles = StyleSheet.create({
     color: RacingTheme.colors.primary,
     letterSpacing: 1,
   },
-  errorText: {
-    fontSize: RacingTheme.typography.h2,
-    fontWeight: RacingTheme.typography.bold as any,
-    color: RacingTheme.colors.error,
-    textAlign: 'center',
-    marginBottom: RacingTheme.spacing.lg,
-    letterSpacing: 1,
-  },
-  errorMessage: {
-    fontSize: RacingTheme.typography.body,
-    color: RacingTheme.colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: RacingTheme.spacing.lg,
-  },
   bottomSpacing: {
     height: RacingTheme.spacing.xxxl,
   },
-  chartSection: {
-    marginBottom: RacingTheme.spacing.lg,
+  mobileLapsContainer: {
+    gap: RacingTheme.spacing.md,
   },
-  chartSubtitle: {
-    fontSize: RacingTheme.typography.caption,
-    color: RacingTheme.colors.textSecondary,
-    marginBottom: RacingTheme.spacing.md,
-    textAlign: 'center',
-  },
-  chartCard: {
+  mobileLapCard: {
     padding: RacingTheme.spacing.md,
   },
-  chartRow: {
+  mobileLapHeader: {
     flexDirection: 'row',
+    justifyContent: 'space-evenly',
     alignItems: 'center',
-    marginBottom: RacingTheme.spacing.sm,
+    marginBottom: RacingTheme.spacing.md,
   },
-  chartLabel: {
-    width: 40,
-    fontSize: RacingTheme.typography.caption,
+  mobileLapRank: {
+    backgroundColor: RacingTheme.colors.primary,
+    borderRadius: RacingTheme.borderRadius.sm,
+    paddingHorizontal: RacingTheme.spacing.sm,
+    paddingVertical: RacingTheme.spacing.xs,
+    minWidth: 40,
+    alignItems: 'center',
+  },
+  mobileLapRankText: {
+    fontSize: RacingTheme.typography.body,
     fontWeight: RacingTheme.typography.bold as any,
-    color: RacingTheme.colors.primary,
+    color: RacingTheme.colors.surface,
     textAlign: 'center',
   },
-  chartBar: {
-    flex: 1,
-    height: 24,
-    backgroundColor: RacingTheme.colors.surfaceElevated,
-    borderRadius: RacingTheme.borderRadius.sm,
-    marginHorizontal: RacingTheme.spacing.sm,
-    overflow: 'hidden',
+  mobileLapStatus: {
+    alignItems: 'flex-end',
   },
-  chartBarFill: {
-    height: '100%',
-    borderRadius: RacingTheme.borderRadius.sm,
-  },
-  chartValue: {
-    width: 60,
+  mobileStatusBadge: {
     fontSize: RacingTheme.typography.caption,
     fontWeight: RacingTheme.typography.medium as any,
-    color: RacingTheme.colors.text,
-    textAlign: 'right',
-  },
-  optimalCard: {
-    marginBottom: RacingTheme.spacing.lg,
-    borderWidth: 2,
-    borderColor: RacingTheme.colors.success,
-  },
-  priorityCard: {
-    marginBottom: RacingTheme.spacing.lg,
-    borderWidth: 2,
-    borderColor: RacingTheme.colors.primary,
-  },
-  optimalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: RacingTheme.spacing.sm,
-  },
-  optimalTitle: {
-    fontSize: RacingTheme.typography.h4,
-    fontWeight: RacingTheme.typography.bold as any,
-    color: RacingTheme.colors.success,
-  },
-  optimalBadge: {
-    fontSize: RacingTheme.typography.small,
-    color: RacingTheme.colors.success,
-    fontWeight: RacingTheme.typography.bold as any,
-    backgroundColor: RacingTheme.colors.surface,
     paddingHorizontal: RacingTheme.spacing.sm,
     paddingVertical: RacingTheme.spacing.xs,
     borderRadius: RacingTheme.borderRadius.sm,
-    borderWidth: 1,
-    borderColor: RacingTheme.colors.success,
+    textAlign: 'center',
   },
-  optimalContent: {
-    padding: RacingTheme.spacing.sm,
+  mobileCleanBadge: {
+    backgroundColor: RacingTheme.colors.success,
+    color: RacingTheme.colors.surface,
   },
-  optimalMetrics: {
+  mobileUncleanBadge: {
+    backgroundColor: RacingTheme.colors.warning,
+    color: RacingTheme.colors.surface,
+  },
+  mobileLapDetails: {
+    gap: RacingTheme.spacing.sm,
+  },
+  mobileLapDetail: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: RacingTheme.spacing.md,
-  },
-  optimalMetric: {
-    flex: 1,
     alignItems: 'center',
   },
-  optimalMetricLabel: {
+  mobileLapDetailLabel: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    flex: 1,
+  },
+  mobileLapDetailValue: {
+    fontSize: RacingTheme.typography.body,
+    fontWeight: RacingTheme.typography.medium as any,
+    color: RacingTheme.colors.text,
+    textAlign: 'right',
+    flex: 1,
+  },
+  mobileLapTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flex: 1,
+  },
+  mobileLapDelta: {
+    fontSize: RacingTheme.typography.caption,
+    fontFamily: RacingTheme.typography.mono,
+    fontWeight: RacingTheme.typography.bold as any,
+    marginLeft: RacingTheme.spacing.sm,
+  },
+  mobileExpandButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: RacingTheme.spacing.sm,
+    paddingVertical: RacingTheme.spacing.xs,
+    borderRadius: RacingTheme.borderRadius.sm,
+    backgroundColor: RacingTheme.colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: RacingTheme.colors.primary,
+  },
+  mobileExpandButtonActive: {
+    backgroundColor: RacingTheme.colors.primary,
+    borderColor: RacingTheme.colors.secondary,
+  },
+  mobileExpandIcon: {
+    fontSize: RacingTheme.typography.caption,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.primary,
+    marginRight: RacingTheme.spacing.xs,
+  },
+  mobileExpandIconActive: {
+    color: RacingTheme.colors.surface,
+  },
+  mobileExpandText: {
     fontSize: RacingTheme.typography.small,
+    fontWeight: RacingTheme.typography.medium as any,
+    color: RacingTheme.colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  mobileExpandTextActive: {
+    color: RacingTheme.colors.surface,
+  },
+  mobileExpandedCard: {
+    marginTop: RacingTheme.spacing.xs,
+    marginLeft: RacingTheme.spacing.lg,
+    marginRight: RacingTheme.spacing.lg,
+    padding: RacingTheme.spacing.md,
+  },
+  mobileExpandedTitle: {
+    fontSize: RacingTheme.typography.small,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: RacingTheme.spacing.sm,
+  },
+  mobileSectorBreakdown: {
+    gap: RacingTheme.spacing.xs,
+  },
+  mobileSectorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: RacingTheme.spacing.xs,
+    paddingHorizontal: RacingTheme.spacing.sm,
+    backgroundColor: RacingTheme.colors.surface,
+    borderRadius: RacingTheme.borderRadius.sm,
+  },
+  mobileSectorLabel: {
+    fontSize: RacingTheme.typography.caption,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.primary,
+    fontFamily: RacingTheme.typography.mono,
+    minWidth: 30,
+  },
+  mobileSectorTime: {
+    fontSize: RacingTheme.typography.body,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.text,
+    fontFamily: RacingTheme.typography.mono,
+    flex: 1,
+    textAlign: 'center',
+  },
+  mobileSectorDelta: {
+    fontSize: RacingTheme.typography.caption,
+    fontFamily: RacingTheme.typography.mono,
+    fontWeight: RacingTheme.typography.bold as any,
+    minWidth: 50,
+    textAlign: 'right',
+  },
+  mobileNoData: {
+    fontSize: RacingTheme.typography.caption,
     color: RacingTheme.colors.textTertiary,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  // Selection Controls Styles
+  selectionSection: {
+    marginBottom: RacingTheme.spacing.lg,
+  },
+  selectionControls: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: RacingTheme.spacing.sm,
+    marginBottom: RacingTheme.spacing.md,
+  },
+  selectionButton: {
+    flex: 1,
+    minWidth: 80,
+  },
+  selectionInfo: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.textSecondary,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  // Sort Controls Styles
+  sortControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: RacingTheme.spacing.md,
+    paddingHorizontal: RacingTheme.spacing.sm,
+  },
+  sortLabel: {
+    fontSize: RacingTheme.typography.small,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  sortButtons: {
+    flexDirection: 'row',
+    gap: RacingTheme.spacing.sm,
+  },
+  sortButton: {
+    backgroundColor: RacingTheme.colors.surface,
+    paddingHorizontal: RacingTheme.spacing.md,
+    paddingVertical: RacingTheme.spacing.sm,
+    borderRadius: RacingTheme.borderRadius.sm,
+    borderWidth: 1,
+    borderColor: RacingTheme.colors.surfaceElevated,
+  },
+  sortButtonActive: {
+    backgroundColor: RacingTheme.colors.primary,
+    borderColor: RacingTheme.colors.primary,
+  },
+  sortButtonText: {
+    fontSize: RacingTheme.typography.caption,
+    fontWeight: RacingTheme.typography.medium as any,
+    color: RacingTheme.colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  sortButtonTextActive: {
+    color: RacingTheme.colors.surface,
+    fontWeight: RacingTheme.typography.bold as any,
+  },
+  // Selected State Styles
+  mobileLapCardSelected: {
+    borderColor: RacingTheme.colors.secondary,
+    borderWidth: 2,
+  },
+  mobileLapRankSelected: {
+    backgroundColor: RacingTheme.colors.secondary,
+  },
+  mobileLapRankTextSelected: {
+    color: RacingTheme.colors.surface,
+  },
+  tableRowSelected: {
+    backgroundColor: RacingTheme.colors.surfaceElevated,
+  },
+  tableRowContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tableRowContentExpanded: {
+    backgroundColor: RacingTheme.colors.surface,
+  },
+  cellSelected: {
+    color: RacingTheme.colors.secondary,
+    fontWeight: RacingTheme.typography.bold as any,
+  },
+  cellDelta: {
+    flex: 1,
+    fontSize: RacingTheme.typography.caption,
+    fontFamily: RacingTheme.typography.mono,
+    fontWeight: RacingTheme.typography.bold as any,
+    textAlign: 'center',
+  },
+  // Optimal Sector Analysis Styles
+  optimalSection: {
+    marginBottom: RacingTheme.spacing.lg,
+  },
+  optimalCombinedRow: {
+    flexDirection: 'row',
+    gap: RacingTheme.spacing.md,
+    alignItems: 'flex-start',
+  },
+  optimalCombinedRowMobile: {
+    flexDirection: 'column',
+    gap: RacingTheme.spacing.md,
+  },
+  optimalLapCard: {
+    alignItems: 'center',
+    padding: RacingTheme.spacing.lg,
+    flex: 1,
+  },
+  optimalLapTitle: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: RacingTheme.spacing.sm,
+  },
+  optimalLapTime: {
+    fontSize: RacingTheme.typography.h2,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.secondary,
+    fontFamily: RacingTheme.typography.mono,
+    marginBottom: RacingTheme.spacing.xs,
+  },
+  optimalLapLabel: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.textTertiary,
+  },
+  sectorsContainer: {
+    flex: 2,
+  },
+  sectorsTitle: {
+    fontSize: RacingTheme.typography.small,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: RacingTheme.spacing.sm,
+  },
+  // Mobile Sector Styles
+  mobileSectorsList: {
+    backgroundColor: RacingTheme.colors.surface,
+    borderRadius: RacingTheme.borderRadius.md,
+    padding: RacingTheme.spacing.md,
+    borderWidth: 1,
+    borderColor: RacingTheme.colors.surfaceElevated,
+  },
+  mobileSectorItem: {
+    paddingVertical: RacingTheme.spacing.sm,
+  },
+  mobileSectorHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  mobileSectorNumber: {
+    fontSize: RacingTheme.typography.body,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.primary,
+    fontFamily: RacingTheme.typography.mono,
+  },
+  // Desktop Sector Styles
+  desktopSectorsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: RacingTheme.spacing.sm,
+  },
+  desktopSectorCard: {
+    backgroundColor: RacingTheme.colors.surface,
+    borderRadius: RacingTheme.borderRadius.md,
+    padding: RacingTheme.spacing.lg,
+    borderWidth: 1,
+    borderColor: RacingTheme.colors.surfaceElevated,
+    alignItems: 'center',
+    minWidth: 120,
+    flex: 1,
+  },
+  desktopSectorNumber: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: RacingTheme.spacing.xs,
   },
-  optimalMetricValue: {
-    fontSize: RacingTheme.typography.body,
+  desktopSectorTime: {
+    fontSize: RacingTheme.typography.h3,
     fontWeight: RacingTheme.typography.bold as any,
-    color: RacingTheme.colors.text,
-    textAlign: 'center',
+    color: RacingTheme.colors.primary,
+    fontFamily: RacingTheme.typography.mono,
   },
-  gapValue: {
-    color: RacingTheme.colors.warning,
-  },
-  optimalGapText: {
-    fontSize: RacingTheme.typography.caption,
-    color: RacingTheme.colors.textTertiary,
-    marginTop: RacingTheme.spacing.xs,
-  },
-  optimalDescription: {
-    fontSize: RacingTheme.typography.caption,
-    color: RacingTheme.colors.textSecondary,
-    lineHeight: 18,
-    textAlign: 'center',
-  },
-  priorityContent: {
-    padding: RacingTheme.spacing.md,
-  },
-  priorityTitle: {
-    fontSize: RacingTheme.typography.body,
-    fontWeight: RacingTheme.typography.medium as any,
-    color: RacingTheme.colors.text,
-    marginBottom: RacingTheme.spacing.md,
-  },
-  priorityItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: RacingTheme.spacing.md,
-    padding: RacingTheme.spacing.sm,
-    backgroundColor: RacingTheme.colors.surfaceElevated,
-    borderRadius: RacingTheme.borderRadius.md,
-  },
-  priorityRank: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: RacingTheme.colors.primary,
+  expandCell: {
+    paddingHorizontal: RacingTheme.spacing.sm,
+    paddingVertical: RacingTheme.spacing.xs,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: RacingTheme.spacing.md,
   },
-  priorityNumber: {
-    fontSize: RacingTheme.typography.h4,
-    fontWeight: RacingTheme.typography.bold as any,
-    color: RacingTheme.colors.surface,
-  },
-  priorityDetails: {
-    flex: 1,
-  },
-  prioritySection: {
-    fontSize: RacingTheme.typography.body,
-    fontWeight: RacingTheme.typography.bold as any,
-    color: RacingTheme.colors.primary,
-    marginBottom: RacingTheme.spacing.xs,
-  },
-  priorityGap: {
-    fontSize: RacingTheme.typography.caption,
-    color: RacingTheme.colors.success,
-    fontWeight: RacingTheme.typography.medium as any,
-    marginBottom: RacingTheme.spacing.xs,
-  },
-  priorityTrend: {
-    fontSize: RacingTheme.typography.caption,
-    color: RacingTheme.colors.textSecondary,
-  },
-  prioritySummary: {
-    marginTop: RacingTheme.spacing.md,
-    padding: RacingTheme.spacing.md,
+  expandCellActive: {
     backgroundColor: RacingTheme.colors.surfaceElevated,
-    borderRadius: RacingTheme.borderRadius.md,
-    borderWidth: 1,
-    borderColor: RacingTheme.colors.primary,
+    borderRadius: RacingTheme.borderRadius.sm,
   },
-  prioritySummaryText: {
-    fontSize: RacingTheme.typography.caption,
-    color: RacingTheme.colors.textSecondary,
-    lineHeight: 18,
-    textAlign: 'center',
-  },
-  boldText: {
-    fontWeight: 'bold' as any,
+  expandIcon: {
+    fontSize: RacingTheme.typography.h4,
     color: RacingTheme.colors.primary,
+    fontWeight: RacingTheme.typography.bold as any,
   },
-  comparisonSection: {
-    marginBottom: RacingTheme.spacing.lg,
+  expandIconExpanded: {
+    color: RacingTheme.colors.secondary,
   },
-  gapCell: {
-    fontWeight: 'bold' as any,
-    textAlign: 'right',
+  expandedSectorRow: {
+    backgroundColor: RacingTheme.colors.surface,
+    borderLeftWidth: 2,
+    borderLeftColor: RacingTheme.colors.primary,
+    marginLeft: RacingTheme.spacing.xl,
+    marginRight: RacingTheme.spacing.xl,
   },
-  bestCell: {
-    color: RacingTheme.colors.success,
-    fontWeight: 'bold' as any,
+  expandedSectorContent: {
+    padding: RacingTheme.spacing.md,
   },
-  improvementCell: {
-    fontWeight: 'bold' as any,
-  },
-  improvementPercent: {
-    fontSize: RacingTheme.typography.caption,
+  expandedSectorTitle: {
+    fontSize: RacingTheme.typography.small,
+    fontWeight: RacingTheme.typography.bold as any,
     color: RacingTheme.colors.textSecondary,
-    fontWeight: 'normal' as any,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: RacingTheme.spacing.sm,
   },
-  trendCell: {
-    fontSize: RacingTheme.typography.body,
-    textAlign: 'center',
+  expandedSectorGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: RacingTheme.spacing.sm,
   },
-  moreLapsIndicator: {
+  expandedSectorItem: {
+    backgroundColor: RacingTheme.colors.surfaceElevated,
+    borderRadius: RacingTheme.borderRadius.sm,
     padding: RacingTheme.spacing.sm,
     alignItems: 'center',
+    minWidth: 100,
   },
-  moreLapsText: {
+  expandedSectorLabel: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.primary,
+    fontFamily: RacingTheme.typography.mono,
+    fontWeight: RacingTheme.typography.bold as any,
+    marginBottom: RacingTheme.spacing.xs,
+  },
+  expandedSectorTime: {
+    fontSize: RacingTheme.typography.body,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.text,
+    fontFamily: RacingTheme.typography.mono,
+    marginBottom: RacingTheme.spacing.xs,
+  },
+  expandedSectorDelta: {
+    fontSize: RacingTheme.typography.caption,
+    fontFamily: RacingTheme.typography.mono,
+    fontWeight: RacingTheme.typography.bold as any,
+  },
+  expandedNoData: {
     fontSize: RacingTheme.typography.caption,
     color: RacingTheme.colors.textTertiary,
+    textAlign: 'center',
     fontStyle: 'italic',
+  },
+  // Metrics Styles
+  metricsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginBottom: RacingTheme.spacing.lg,
+  },
+  metricCard: {
+    width: '48%',
+    marginBottom: RacingTheme.spacing.md,
   },
 });
 

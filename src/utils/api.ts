@@ -64,6 +64,8 @@ class ApiClient {
     cars?: number[];
     tracks?: number[];
     sessionTypes?: number[];
+    event?: string; // Event ID to filter by
+    unclean?: boolean; // Include unclean laps
     minLapTime?: number;
     maxLapTime?: number;
     group?: 'driver' | 'driver-car' | 'none'; // API grouping option
@@ -79,6 +81,7 @@ class ApiClient {
         cars: params?.cars?.join(','),
         tracks: params?.tracks?.join(','),
         sessionTypes: params?.sessionTypes?.join(','),
+        event: params?.event,
       };
 
       const response: AxiosResponse<LapsResponse> = await this.client.get(url, {

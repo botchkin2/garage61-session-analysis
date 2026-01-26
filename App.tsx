@@ -63,12 +63,6 @@ const App = (): React.JSX.Element => {
           backgroundColor={RacingTheme.colors.background}
         />
 
-        {/* Racing-themed Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>RACE ANALYTICS</Text>
-          <View style={styles.headerAccent} />
-        </View>
-
         {/* Racing-inspired Tab Navigation - Only show when not in session analysis */}
         {activeView !== 'session' && (
           <View style={styles.tabContainer}>
@@ -132,29 +126,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: RacingTheme.colors.background,
-  },
-  header: {
-    backgroundColor: RacingTheme.colors.surface,
-    paddingVertical: RacingTheme.spacing.lg,
-    paddingHorizontal: RacingTheme.spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: RacingTheme.colors.surfaceElevated,
-    ...RacingTheme.shadows.sm,
-  },
-  headerTitle: {
-    fontSize: RacingTheme.typography.h2,
-    fontWeight: '700' as const,
-    color: RacingTheme.colors.primary,
-    textAlign: 'center',
-    letterSpacing: 2,
-    fontFamily: RacingTheme.typography.primary,
-  },
-  headerAccent: {
-    height: 2,
-    backgroundColor: RacingTheme.colors.primary,
-    marginTop: RacingTheme.spacing.xs,
-    borderRadius: RacingTheme.borderRadius.sm,
-    ...RacingTheme.shadows.glow,
   },
   tabContainer: {
     flexDirection: 'row',
