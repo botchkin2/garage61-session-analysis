@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useCallback} from 'react';
+import React, {useState, useEffect} from 'react';
 import {
   View,
   Text,
@@ -18,7 +18,7 @@ import {
 } from '@/components';
 import {RacingTheme} from '@/theme';
 import {SessionData, Lap} from '@/types';
-import {apiClient} from '@/utils';
+import {useLaps} from '@/hooks/useApiQueries';
 
 interface SessionAnalysisProps {
   sessionData: SessionData;
@@ -30,7 +30,6 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
   onBack,
 }) => {
   const [laps, setLaps] = useState<Lap[]>([]);
-  const [loading, setLoading] = useState(true);
   const [fadeAnim] = useState(new Animated.Value(0));
   const [dimensions, setDimensions] = useState(Dimensions.get('window'));
   const [selectedLapIds, setSelectedLapIds] = useState<Set<string>>(new Set());
@@ -160,51 +159,45 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
     });
   };
 
-  // Fetch all laps for the specific event
-  const fetchSessionLaps = useCallback(async () => {
-    try {
-      console.log(
-        'SessionAnalysis: Fetching laps for event:',
-        sessionData.eventId,
-      );
+  // Use cached laps query
+  const {
+    data: lapsResponse,
+    isLoading,
+    error,
+  } = useLaps({
+    limit: 1000,
+    drivers: 'me',
+    event: sessionData.eventId,
+    unclean: true,
+    group: 'none',
+  });
 
-      const response = await apiClient.getLaps({
-        limit: 1000,
-        drivers: 'me',
-        event: sessionData.eventId,
-        unclean: true,
-        group: 'none',
-      });
-
+  // Set laps and default selection when data loads
+  useEffect(() => {
+    if (lapsResponse?.items) {
       console.log(
-        `SessionAnalysis: API returned ${response.items.length} laps for event`,
+        `SessionAnalysis: Loaded ${lapsResponse.items.length} laps for event from cache/query`,
       );
       console.log(
         'SessionAnalysis: Lap numbers:',
-        response.items.map(lap => lap.lapNumber).sort((a, b) => a - b),
+        lapsResponse.items.map(lap => lap.lapNumber).sort((a, b) => a - b),
       );
 
-      setLaps(response.items);
+      setLaps(lapsResponse.items);
       // Default to selecting all clean laps
       setSelectedLapIds(
-        new Set(response.items.filter(lap => lap.clean).map(lap => lap.id)),
+        new Set(lapsResponse.items.filter(lap => lap.clean).map(lap => lap.id)),
       );
-      setLoading(false);
-    } catch (error) {
-      console.error('SessionAnalysis: Failed to fetch laps:', error);
-      setLaps([]);
-      setLoading(false);
     }
-  }, [sessionData.eventId]);
+  }, [lapsResponse]);
 
   useEffect(() => {
-    fetchSessionLaps();
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: RacingTheme.animations.normal,
       useNativeDriver: true,
     }).start();
-  }, [fetchSessionLaps, fadeAnim]);
+  }, [fadeAnim]);
 
   useEffect(() => {
     const subscription = Dimensions.addEventListener('change', ({window}) => {
@@ -235,12 +228,23 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
     }
   };
 
-  if (loading) {
+  if (isLoading && !lapsResponse) {
     return (
       <View style={styles.mainContainer}>
         <View style={styles.centerContainer}>
           <ActivityIndicator size='large' color={RacingTheme.colors.primary} />
           <Text style={styles.loadingText}>LOADING SESSION LAPS...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.mainContainer}>
+        <View style={styles.centerContainer}>
+          <Text style={styles.errorText}>ERROR LOADING SESSION LAPS</Text>
+          <Text style={styles.errorText}>{error.message}</Text>
         </View>
       </View>
     );

@@ -8,7 +8,8 @@ import {
   View,
   Animated,
 } from 'react-native';
-import {AuthProvider} from '@/utils';
+import {QueryClientProvider} from '@tanstack/react-query';
+import {AuthProvider, queryClient} from '@/utils';
 import {UserProfile, LapList, SessionAnalysis} from '@/components';
 import {ChartDemoScreen} from '@/screens';
 import {RacingTheme} from '@/theme';
@@ -56,69 +57,77 @@ const App = (): React.JSX.Element => {
   };
 
   return (
-    <AuthProvider>
-      <SafeAreaView style={styles.container}>
-        <StatusBar
-          barStyle='light-content'
-          backgroundColor={RacingTheme.colors.background}
-        />
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <SafeAreaView style={styles.container}>
+          <StatusBar
+            barStyle='light-content'
+            backgroundColor={RacingTheme.colors.background}
+          />
 
-        {/* Racing-inspired Tab Navigation - Only show when not in session analysis */}
-        {activeView !== 'session' && (
-          <View style={styles.tabContainer}>
-            <TouchableOpacity
-              style={[styles.tab, activeView === 'profile' && styles.activeTab]}
-              onPress={() => switchView('profile')}>
-              <Text
+          {/* Racing-inspired Tab Navigation - Only show when not in session analysis */}
+          {activeView !== 'session' && (
+            <View style={styles.tabContainer}>
+              <TouchableOpacity
                 style={[
-                  styles.tabText,
-                  activeView === 'profile' && styles.activeTabText,
-                ]}>
-                🏁 DRIVER
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tab, activeView === 'laps' && styles.activeTab]}
-              onPress={() => switchView('laps')}>
-              <Text
+                  styles.tab,
+                  activeView === 'profile' && styles.activeTab,
+                ]}
+                onPress={() => switchView('profile')}>
+                <Text
+                  style={[
+                    styles.tabText,
+                    activeView === 'profile' && styles.activeTabText,
+                  ]}>
+                  🏁 DRIVER
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.tab, activeView === 'laps' && styles.activeTab]}
+                onPress={() => switchView('laps')}>
+                <Text
+                  style={[
+                    styles.tabText,
+                    activeView === 'laps' && styles.activeTabText,
+                  ]}>
+                  📊 ANALYSIS
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
                 style={[
-                  styles.tabText,
-                  activeView === 'laps' && styles.activeTabText,
-                ]}>
-                📊 ANALYSIS
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tab, activeView === 'charts' && styles.activeTab]}
-              onPress={() => switchView('charts')}>
-              <Text
-                style={[
-                  styles.tabText,
-                  activeView === 'charts' && styles.activeTabText,
-                ]}>
-                📈 CHARTS
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Content with racing aesthetic */}
-        <View style={styles.contentContainer}>
-          {activeView === 'profile' ? (
-            <UserProfile />
-          ) : activeView === 'charts' ? (
-            <ChartDemoScreen />
-          ) : activeView === 'session' && sessionData ? (
-            <SessionAnalysis
-              sessionData={sessionData}
-              onBack={handleBackToLaps}
-            />
-          ) : (
-            <LapList onSessionAnalysis={handleSessionAnalysis} />
+                  styles.tab,
+                  activeView === 'charts' && styles.activeTab,
+                ]}
+                onPress={() => switchView('charts')}>
+                <Text
+                  style={[
+                    styles.tabText,
+                    activeView === 'charts' && styles.activeTabText,
+                  ]}>
+                  📈 CHARTS
+                </Text>
+              </TouchableOpacity>
+            </View>
           )}
-        </View>
-      </SafeAreaView>
-    </AuthProvider>
+
+          {/* Content with racing aesthetic */}
+          <View style={styles.contentContainer}>
+            {activeView === 'profile' ? (
+              <UserProfile />
+            ) : activeView === 'charts' ? (
+              <ChartDemoScreen />
+            ) : activeView === 'session' && sessionData ? (
+              <SessionAnalysis
+                sessionData={sessionData}
+                onBack={handleBackToLaps}
+              />
+            ) : (
+              <LapList onSessionAnalysis={handleSessionAnalysis} />
+            )}
+          </View>
+        </SafeAreaView>
+      </AuthProvider>
+    </QueryClientProvider>
   );
 };
 

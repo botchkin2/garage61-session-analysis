@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useCallback} from 'react';
+import React, {useState, useEffect, useCallback, useMemo} from 'react';
 import {
   View,
   Text,
@@ -10,8 +10,8 @@ import {
   Animated,
   Dimensions,
 } from 'react-native';
-import {apiClient} from '@/utils';
-import {Lap, LapsResponse} from '@/types';
+import {useLaps} from '@/hooks/useApiQueries';
+import {Lap} from '@/types';
 import {
   RacingCard,
   RacingButton,
@@ -114,70 +114,69 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
     );
   }, []);
 
-  const loadLaps = useCallback(
-    async (isRefresh = false) => {
-      try {
-        if (isRefresh) {
-          setRefreshing(true);
-        } else {
-          setLoading(true);
-        }
-        setError(null);
+  // Use cached laps query
+  const {
+    data: lapsResponse,
+    isLoading: queryLoading,
+    error: queryError,
+    refetch,
+  } = useLaps({
+    limit: 200,
+    age: selectedTimeRange,
+    drivers: 'me',
+    group: 'none',
+  });
 
-        // Test API connectivity
-        const canConnect = await apiClient.ping();
-        if (!canConnect) {
-          throw new Error(
-            'Cannot connect to Garage 61 API. Check your token and network connection.',
-          );
-        }
+  // Group laps by event when data changes
+  const groupedEvents = useMemo(() => {
+    if (!lapsResponse?.items) {
+      return [];
+    }
 
-        // Get laps from selected time range
-        const response: LapsResponse = await apiClient.getLaps({
-          limit: 200,
-          age: selectedTimeRange,
-          drivers: 'me',
-          group: 'none',
-        });
+    console.log(
+      'LapList: Successfully loaded',
+      lapsResponse.items.length,
+      'laps out of',
+      lapsResponse.total,
+    );
 
-        console.log(
-          'LapList: Successfully loaded',
-          response.items.length,
-          'laps out of',
-          response.total,
-        );
+    const grouped = groupLapsByEvent(lapsResponse.items);
+    console.log('LapList: Grouped into', grouped.length, 'events');
+    return grouped;
+  }, [lapsResponse, groupLapsByEvent]);
 
-        // Group laps by event with enhanced metrics
-        const groupedEvents = groupLapsByEvent(response.items);
-        setEventGroups(groupedEvents);
-        console.log('LapList: Grouped into', groupedEvents.length, 'events');
-      } catch (err) {
-        console.error('LapList: Error loading laps:', err);
-        setError(
-          err instanceof Error ? err.message : 'Failed to load lap data',
-        );
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    },
-    [groupLapsByEvent, selectedTimeRange],
-  );
+  // Update event groups when grouped data changes
+  useEffect(() => {
+    setEventGroups(groupedEvents);
+  }, [groupedEvents]);
+
+  // Update loading state based on query loading
+  useEffect(() => {
+    setLoading(queryLoading && !lapsResponse);
+  }, [queryLoading, lapsResponse]);
+
+  // Handle errors from the query
+  useEffect(() => {
+    if (queryError) {
+      setError(queryError.message || 'Failed to load lap data');
+    } else {
+      setError(null);
+    }
+  }, [queryError]);
 
   const handleRefresh = () => {
-    loadLaps(true);
+    setRefreshing(true);
+    refetch().finally(() => setRefreshing(false));
   };
 
   useEffect(() => {
-    loadLaps();
-
     // Fade in animation
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: RacingTheme.animations.normal,
       useNativeDriver: true,
     }).start();
-  }, [fadeAnim, loadLaps, selectedTimeRange]);
+  }, [fadeAnim]);
 
   useEffect(() => {
     const subscription = Dimensions.addEventListener('change', ({window}) => {
@@ -244,7 +243,7 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
             <Text style={styles.errorText}>{error}</Text>
             <RacingButton
               title='RETRY CONNECTION'
-              onPress={() => loadLaps()}
+              onPress={() => refetch()}
               style={styles.refreshButton}
             />
           </View>

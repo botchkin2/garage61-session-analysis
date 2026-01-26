@@ -1,11 +1,5 @@
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  ReactNode,
-} from 'react';
-import {apiClient} from './api';
+import React, {createContext, useContext, ReactNode} from 'react';
+import {useUser} from '@/hooks/useApiQueries';
 import {Garage61User} from '@/types';
 
 interface AuthContextType {
@@ -23,33 +17,17 @@ interface AuthProviderProps {
 }
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({children}) => {
-  const [user, setUser] = useState<Garage61User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const {data: user, isLoading, error, refetch} = useUser();
 
   const refreshUser = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const userData = await apiClient.getCurrentUser();
-      setUser(userData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load user data');
-      setUser(null);
-    } finally {
-      setIsLoading(false);
-    }
+    await refetch();
   };
 
-  useEffect(() => {
-    refreshUser();
-  }, []);
-
   const value: AuthContextType = {
-    user,
+    user: user || null,
     isLoading,
-    isAuthenticated: user !== null,
-    error,
+    isAuthenticated: !!user,
+    error: error?.message || null,
     refreshUser,
   };
 
