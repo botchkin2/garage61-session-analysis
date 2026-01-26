@@ -500,32 +500,6 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
                                     #{index + 1}
                                   </Text>
                                 </View>
-
-                                <TouchableOpacity
-                                  style={[
-                                    styles.mobileExpandButton,
-                                    isExpanded &&
-                                      styles.mobileExpandButtonActive,
-                                  ]}
-                                  onPress={() => toggleLapExpansion(lap.id)}>
-                                  <Text
-                                    style={[
-                                      styles.mobileExpandIcon,
-                                      isExpanded &&
-                                        styles.mobileExpandIconActive,
-                                    ]}>
-                                    {isExpanded ? '▼' : '▶'}
-                                  </Text>
-                                  <Text
-                                    style={[
-                                      styles.mobileExpandText,
-                                      isExpanded &&
-                                        styles.mobileExpandTextActive,
-                                    ]}>
-                                    {isExpanded ? 'COLLAPSE' : 'EXPAND'}
-                                  </Text>
-                                </TouchableOpacity>
-
                                 <View style={styles.mobileLapStatus}>
                                   {lap.clean ? (
                                     <Text
@@ -557,9 +531,25 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
                                   </Text>
                                 </View>
                                 <View style={styles.mobileLapDetail}>
-                                  <Text style={styles.mobileLapDetailLabel}>
-                                    LAP TIME
-                                  </Text>
+                                  <View style={styles.mobileLapTimeHeader}>
+                                    <Text style={styles.mobileLapDetailLabel}>
+                                      LAP TIME
+                                    </Text>
+                                    <TouchableOpacity
+                                      style={styles.mobileLapTimeExpand}
+                                      onPress={() =>
+                                        toggleLapExpansion(lap.id)
+                                      }>
+                                      <Text
+                                        style={[
+                                          styles.mobileLapTimeExpandIcon,
+                                          isExpanded &&
+                                            styles.mobileLapTimeExpandIconActive,
+                                        ]}>
+                                        {isExpanded ? '▼' : '▶'}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  </View>
                                   <View style={styles.mobileLapTimeRow}>
                                     <LapTime
                                       time={lap.lapTime}
@@ -1006,6 +996,14 @@ const styles = StyleSheet.create({
     color: RacingTheme.colors.primary,
     letterSpacing: 1,
   },
+  errorText: {
+    fontSize: RacingTheme.typography.h2,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.error,
+    textAlign: 'center',
+    marginBottom: RacingTheme.spacing.lg,
+    letterSpacing: 1,
+  },
   bottomSpacing: {
     height: RacingTheme.spacing.xxxl,
   },
@@ -1017,7 +1015,7 @@ const styles = StyleSheet.create({
   },
   mobileLapHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-evenly',
+    justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: RacingTheme.spacing.md,
   },
@@ -1088,38 +1086,23 @@ const styles = StyleSheet.create({
     fontWeight: RacingTheme.typography.bold as any,
     marginLeft: RacingTheme.spacing.sm,
   },
-  mobileExpandButton: {
+  mobileLapTimeHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: RacingTheme.spacing.sm,
+    justifyContent: 'space-between',
+    marginBottom: RacingTheme.spacing.xs,
+  },
+  mobileLapTimeExpand: {
+    paddingHorizontal: RacingTheme.spacing.xs,
     paddingVertical: RacingTheme.spacing.xs,
-    borderRadius: RacingTheme.borderRadius.sm,
-    backgroundColor: RacingTheme.colors.surfaceElevated,
-    borderWidth: 1,
-    borderColor: RacingTheme.colors.primary,
   },
-  mobileExpandButtonActive: {
-    backgroundColor: RacingTheme.colors.primary,
-    borderColor: RacingTheme.colors.secondary,
-  },
-  mobileExpandIcon: {
-    fontSize: RacingTheme.typography.caption,
+  mobileLapTimeExpandIcon: {
+    fontSize: RacingTheme.typography.body,
     fontWeight: RacingTheme.typography.bold as any,
     color: RacingTheme.colors.primary,
-    marginRight: RacingTheme.spacing.xs,
   },
-  mobileExpandIconActive: {
-    color: RacingTheme.colors.surface,
-  },
-  mobileExpandText: {
-    fontSize: RacingTheme.typography.small,
-    fontWeight: RacingTheme.typography.medium as any,
-    color: RacingTheme.colors.primary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  mobileExpandTextActive: {
-    color: RacingTheme.colors.surface,
+  mobileLapTimeExpandIconActive: {
+    color: RacingTheme.colors.secondary,
   },
   mobileExpandedCard: {
     marginTop: RacingTheme.spacing.xs,
