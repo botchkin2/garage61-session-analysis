@@ -10,24 +10,30 @@ import {
 } from 'react-native';
 import {QueryClientProvider} from '@tanstack/react-query';
 import {AuthProvider, queryClient} from '@/utils';
-import {UserProfile, LapList, SessionAnalysis} from '@/components';
+import {
+  UserProfile,
+  LapList,
+  SessionAnalysis,
+  MultiLapComparison,
+} from '@/components';
 import {ChartDemoScreen} from '@/screens';
 import {RacingTheme} from '@/theme';
 import {SessionData} from '@/types';
 
 const App = (): React.JSX.Element => {
   const [activeView, setActiveView] = useState<
-    'profile' | 'laps' | 'charts' | 'session'
+    'profile' | 'laps' | 'charts' | 'session' | 'multiLapComparison'
   >('profile');
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
+  const [selectedLapIds, setSelectedLapIds] = useState<Set<string>>(new Set());
   const [tabAnimation] = useState(new Animated.Value(0));
 
   const switchView = (
-    newView: 'profile' | 'laps' | 'charts' | 'session',
+    newView: 'profile' | 'laps' | 'charts' | 'session' | 'multiLapComparison',
     data?: SessionData,
   ) => {
     if (newView !== activeView) {
-      if (newView === 'session' && data) {
+      if ((newView === 'session' || newView === 'multiLapComparison') && data) {
         setSessionData(data);
       }
       setActiveView(newView);
@@ -40,7 +46,9 @@ const App = (): React.JSX.Element => {
             ? 1
             : newView === 'charts'
             ? 2
-            : 3,
+            : newView === 'session'
+            ? 3
+            : 4,
         duration: RacingTheme.animations.normal,
         useNativeDriver: false,
       }).start();
@@ -56,6 +64,21 @@ const App = (): React.JSX.Element => {
     setSessionData(null);
   };
 
+  const handleMultiLapComparison = (selectedLaps?: Set<string>) => {
+    if (sessionData) {
+      if (selectedLaps) {
+        setSelectedLapIds(selectedLaps);
+      }
+      switchView('multiLapComparison', sessionData);
+    }
+  };
+
+  const handleBackToSessionAnalysis = () => {
+    if (sessionData) {
+      switchView('session', sessionData);
+    }
+  };
+
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
@@ -65,8 +88,8 @@ const App = (): React.JSX.Element => {
             backgroundColor={RacingTheme.colors.background}
           />
 
-          {/* Racing-inspired Tab Navigation - Only show when not in session analysis */}
-          {activeView !== 'session' && (
+          {/* Racing-inspired Tab Navigation - Only show when not in session analysis or multi-lap comparison */}
+          {activeView !== 'session' && activeView !== 'multiLapComparison' && (
             <View style={styles.tabContainer}>
               <TouchableOpacity
                 style={[
@@ -120,6 +143,13 @@ const App = (): React.JSX.Element => {
               <SessionAnalysis
                 sessionData={sessionData}
                 onBack={handleBackToLaps}
+                onMultiLapComparison={handleMultiLapComparison}
+              />
+            ) : activeView === 'multiLapComparison' && sessionData ? (
+              <MultiLapComparison
+                sessionData={sessionData}
+                onBack={handleBackToSessionAnalysis}
+                selectedLapIds={selectedLapIds}
               />
             ) : (
               <LapList onSessionAnalysis={handleSessionAnalysis} />

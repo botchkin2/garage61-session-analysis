@@ -3,6 +3,8 @@ export {default as UserProfile} from './UserProfile';
 export {default as LapList} from './LapList';
 export {default as SessionAnalysis} from './SessionAnalysis';
 export {TimeSeriesChart} from './TimeSeriesChart';
+export {default as MultiLapComparison} from './MultiLapComparison';
+export {MultiLapTimeSeriesChart} from './MultiLapTimeSeriesChart';
 
 // Racing UI Components
 export {

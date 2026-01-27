@@ -416,7 +416,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
     };
 
     // Use variable interval based on speed
-    const animationInterval = Math.max(5, 30 / Math.abs(playbackSpeed));
+    const animationInterval = 1;
 
     animationRef.current = setInterval(animate, animationInterval);
   };

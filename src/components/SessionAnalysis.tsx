@@ -23,11 +23,13 @@ import {useLaps} from '@/hooks/useApiQueries';
 interface SessionAnalysisProps {
   sessionData: SessionData;
   onBack: () => void;
+  onMultiLapComparison?: (selectedLapIds: Set<string>) => void;
 }
 
 const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
   sessionData,
   onBack,
+  onMultiLapComparison,
 }) => {
   const [laps, setLaps] = useState<Lap[]>([]);
   const [fadeAnim] = useState(new Animated.Value(0));
@@ -458,6 +460,13 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
                   onPress={clearSelection}
                   style={styles.selectionButton}
                 />
+                {onMultiLapComparison && selectedLaps.length > 0 && (
+                  <RacingButton
+                    title='📊 COMPARE LAPS'
+                    onPress={() => onMultiLapComparison(selectedLapIds)}
+                    style={[styles.selectionButton, styles.compareButton]}
+                  />
+                )}
               </View>
               <Text style={styles.selectionInfo}>
                 {selectedLaps.length} of {laps.length} laps selected for
@@ -1903,6 +1912,9 @@ const styles = StyleSheet.create({
   metricCard: {
     width: '48%',
     marginBottom: RacingTheme.spacing.md,
+  },
+  compareButton: {
+    backgroundColor: RacingTheme.colors.secondary,
   },
 });
 

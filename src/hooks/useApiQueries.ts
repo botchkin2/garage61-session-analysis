@@ -1,6 +1,5 @@
 import {useQuery} from '@tanstack/react-query';
 import {apiClient} from '@/utils/api';
-import {TelemetryInfo} from '@/types';
 
 // Query keys for consistent cache management
 export const queryKeys = {
@@ -42,23 +41,17 @@ export const useLaps = (params?: {
   });
 };
 
-// Telemetry data - cache longer (expensive to fetch)
+// Telemetry data - cache for 7 days (expensive to fetch, rarely changes)
 export const useTelemetry = (lapId: string) => {
   return useQuery({
     queryKey: queryKeys.telemetry(lapId),
     queryFn: async () => {
-      // First get telemetry info
-      const telemetryInfo: TelemetryInfo = await apiClient.get(
-        `/laps/${lapId}/telemetry`,
-      );
-      // If telemetry URL exists, fetch the actual data
-      if (telemetryInfo.url) {
-        return await apiClient.get(telemetryInfo.url);
-      }
-      return null;
+      // Fetch CSV directly from the API endpoint
+      const csvText = await apiClient.getCsv(`/laps/${lapId}/csv`);
+      return csvText;
     },
-    staleTime: 60 * 60 * 1000, // 1 hour
-    gcTime: 2 * 60 * 60 * 1000, // 2 hours
+    staleTime: 7 * 24 * 60 * 60 * 1000, // 7 days
+    gcTime: 7 * 24 * 60 * 60 * 1000, // 7 days (keep in cache for 7 days)
     enabled: !!lapId, // Only run if lapId exists
   });
 };
