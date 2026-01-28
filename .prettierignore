@@ -6,6 +6,11 @@ web-build/
 dist/
 build/
 
+# Firebase hosting built files (keep index.html and 404.html)
+/public/bundle.js
+/public/bundle.js.map
+/public/bundle.js.LICENSE.txt
+
 # Generated files
 *.min.js
 *.min.css

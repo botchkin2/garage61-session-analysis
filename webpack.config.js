@@ -1,6 +1,7 @@
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const Dotenv = require('dotenv-webpack');
+const webpack = require('webpack');
 
 module.exports = {
   entry: './index.web.js',
@@ -16,8 +17,13 @@ module.exports = {
       '.tsx',
       '.json',
     ],
+    mainFields: ['browser', 'main', 'module'],
     alias: {
       'react-native$': 'react-native-web',
+      'react-native/Libraries/Utilities/Dimensions': path.resolve(
+        __dirname,
+        'src/utils/dimensionsPolyfill.js',
+      ),
       '@': path.resolve(__dirname, 'src'),
       '@components': path.resolve(__dirname, 'src/components'),
       '@screens': path.resolve(__dirname, 'src/screens'),
@@ -83,12 +89,14 @@ module.exports = {
   plugins: [
     new HtmlWebpackPlugin({
       template: './public/index.html',
-      inject: true,
+      inject: 'body',
+      scriptLoading: 'defer',
+      chunks: ['main'],
     }),
     new Dotenv({
       path: './.env.local',
       safe: false,
-      systemvars: false,
+      systemvars: true,
     }),
   ],
   devServer: {
