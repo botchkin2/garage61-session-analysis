@@ -8,6 +8,9 @@ import {
   Animated,
 } from 'react-native';
 import {useAuth} from '@/utils';
+
+// Web-specific types
+declare const window: any;
 import {RacingCard, RacingButton, StatusBadge} from '@/components';
 import {RacingTheme} from '@/theme';
 

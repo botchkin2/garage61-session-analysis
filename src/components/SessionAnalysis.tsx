@@ -242,7 +242,7 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
           unclean: true,
           group: 'none',
         }
-      : null,
+      : undefined,
   );
 
   // Set laps and default selection when data loads
@@ -479,7 +479,9 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
                   <RacingButton
                     title='📊 COMPARE LAPS'
                     onPress={() => onMultiLapComparison(selectedLapIds)}
-                    style={[styles.selectionButton, styles.compareButton]}
+                    style={
+                      [styles.selectionButton, styles.compareButton] as any
+                    }
                   />
                 )}
               </View>

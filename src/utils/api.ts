@@ -3,11 +3,11 @@ import {Garage61User, LapsResponse, ApiError} from '@/types';
 
 // Environment variables
 // In development, use webpack proxy to avoid CORS issues
-// In production, use the direct API URL
+// In production, use Firebase Functions proxy to avoid CORS issues
 const isDevelopment = process.env.NODE_ENV === 'development';
 const API_BASE_URL = isDevelopment
   ? '/api/garage61' // Proxied through webpack dev server
-  : process.env.GARAGE61_API_BASE_URL || 'https://garage61.net/api/v1';
+  : '/api/garage61'; // Proxied through Firebase Functions
 const API_TOKEN = process.env.GARAGE61_API_TOKEN;
 
 if (!API_TOKEN) {

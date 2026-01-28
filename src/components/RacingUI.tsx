@@ -52,7 +52,7 @@ export const RacingButton: React.FC<RacingButtonProps> = ({
 };
 
 interface StatusBadgeProps {
-  status: 'clean' | 'offtrack' | 'pit' | 'incomplete' | 'best';
+  status: 'clean' | 'offtrack' | 'pit' | 'incomplete' | 'best' | string;
   style?: ViewStyle;
 }
 
@@ -113,7 +113,7 @@ export const MetricCard: React.FC<MetricCardProps> = ({
   };
 
   return (
-    <RacingCard style={[styles.metricCard, style]}>
+    <RacingCard style={[styles.metricCard, style] as any}>
       <Text style={styles.metricTitle}>{title}</Text>
       <Text style={styles.metricValue}>
         {value}

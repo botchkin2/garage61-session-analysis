@@ -54,7 +54,7 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
           unclean: true,
           group: 'none',
         }
-      : null,
+      : undefined,
   );
 
   // Set laps and default selection when data loads
@@ -87,7 +87,7 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
 
   useEffect(() => {
     const subscription = Dimensions.addEventListener('change', ({window}) => {
-      setDimensions(window);
+      _setDimensions(window);
     });
     return () => subscription?.remove();
   }, []);

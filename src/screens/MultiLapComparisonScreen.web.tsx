@@ -43,7 +43,11 @@ const MultiLapComparisonScreen: React.FC = () => {
   };
 
   const selectedLapIds = location.state?.selectedLapIds || [];
-  const selectedLapIdsSet = new Set(selectedLapIds);
+  const selectedLapIdsSet = new Set(
+    Array.isArray(selectedLapIds)
+      ? selectedLapIds.filter((id): id is string => typeof id === 'string')
+      : [],
+  );
 
   const handleBackToSessionAnalysis = () => {
     // Use eventId instead of id, and validate it exists

@@ -80,6 +80,24 @@ const AppNavigator = () => {
           border: RacingTheme.colors.surfaceElevated,
           notification: RacingTheme.colors.primary,
         },
+        fonts: {
+          regular: {
+            fontFamily: RacingTheme.typography.primary,
+            fontWeight: RacingTheme.typography.regular,
+          },
+          medium: {
+            fontFamily: RacingTheme.typography.primary,
+            fontWeight: RacingTheme.typography.medium,
+          },
+          bold: {
+            fontFamily: RacingTheme.typography.primary,
+            fontWeight: RacingTheme.typography.bold,
+          },
+          heavy: {
+            fontFamily: RacingTheme.typography.primary,
+            fontWeight: RacingTheme.typography.bold,
+          },
+        },
       }}>
       <Stack.Navigator
         screenOptions={{
