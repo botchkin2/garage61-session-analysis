@@ -10,7 +10,6 @@ import {
 import {
   ProfileScreen,
   LapListScreen,
-  ChartDemoScreen,
   SessionAnalysisScreen,
   MultiLapComparisonScreen,
 } from '@/screens';
@@ -28,9 +27,6 @@ const WebTabBar = () => {
     if (pathname === '/laps') {
       return 'laps';
     }
-    if (pathname === '/charts') {
-      return 'charts';
-    }
     return 'profile';
   };
 
@@ -39,7 +35,6 @@ const WebTabBar = () => {
   const tabs = [
     {key: 'profile', label: '🏁 DRIVER', path: '/'},
     {key: 'laps', label: '📊 ANALYSIS', path: '/laps'},
-    {key: 'charts', label: '📈 CHARTS', path: '/charts'},
   ];
 
   // Hide tab bar on session/comparison screens
@@ -81,7 +76,6 @@ const AppNavigator = () => {
             <Route path='/' element={<ProfileScreen />} />
             <Route path='/profile' element={<ProfileScreen />} />
             <Route path='/laps' element={<LapListScreen />} />
-            <Route path='/charts' element={<ChartDemoScreen />} />
             <Route
               path='/session/:sessionId'
               element={<SessionAnalysisScreen />}

@@ -11,7 +11,6 @@ export type RootStackParamList = {
 export type MainTabParamList = {
   Profile: undefined;
   Laps: undefined;
-  Charts: undefined;
 };
 
 // Import platform-specific navigation

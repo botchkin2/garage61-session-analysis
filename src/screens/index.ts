@@ -1,5 +1,4 @@
 // Export all screens from here for easier imports
-export {default as ChartDemoScreen} from './ChartDemoScreen';
 export {default as ProfileScreen} from './ProfileScreen';
 
 // Platform-specific exports

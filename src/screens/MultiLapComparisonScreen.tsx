@@ -9,7 +9,6 @@ import {RouteProp} from '@react-navigation/native';
 type RootStackParamList = {
   Profile: undefined;
   Laps: undefined;
-  Charts: undefined;
   SessionAnalysis: {sessionData: SessionData};
   MultiLapComparison: {sessionData: SessionData; selectedLapIds?: string[]};
 };

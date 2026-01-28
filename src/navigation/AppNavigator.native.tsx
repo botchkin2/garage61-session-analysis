@@ -5,7 +5,6 @@ import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {
   ProfileScreen,
   LapListScreen,
-  ChartDemoScreen,
   SessionAnalysisScreen,
   MultiLapComparisonScreen,
 } from '@/screens';
@@ -22,7 +21,6 @@ type RootStackParamList = {
 type MainTabParamList = {
   Profile: undefined;
   Laps: undefined;
-  Charts: undefined;
 };
 
 // Create the navigators
@@ -62,14 +60,6 @@ const MainTabNavigator = () => {
         options={{
           title: '📊 ANALYSIS',
           tabBarLabel: 'Analysis',
-        }}
-      />
-      <Tab.Screen
-        name='Charts'
-        component={ChartDemoScreen}
-        options={{
-          title: '📈 CHARTS',
-          tabBarLabel: 'Charts',
         }}
       />
     </Tab.Navigator>
