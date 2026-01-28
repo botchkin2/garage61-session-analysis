@@ -31,6 +31,7 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
   onBack,
   onMultiLapComparison,
 }) => {
+  // All hooks must be called before any conditional logic
   const [laps, setLaps] = useState<Lap[]>([]);
   const [fadeAnim] = useState(new Animated.Value(0));
   const [dimensions, setDimensions] = useState(Dimensions.get('window'));
@@ -227,18 +228,22 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
     });
   };
 
-  // Use cached laps query
+  // Use cached laps query - only when sessionData is available
   const {
     data: lapsResponse,
     isLoading,
     error,
-  } = useLaps({
-    limit: 1000,
-    drivers: 'me',
-    event: sessionData.eventId,
-    unclean: true,
-    group: 'none',
-  });
+  } = useLaps(
+    sessionData
+      ? {
+          limit: 1000,
+          drivers: 'me',
+          event: sessionData.eventId,
+          unclean: true,
+          group: 'none',
+        }
+      : null,
+  );
 
   // Set laps and default selection when data loads
   useEffect(() => {
@@ -273,6 +278,16 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
     });
     return () => subscription?.remove();
   }, []);
+
+  // Add null checks to prevent runtime errors - after all hooks are called
+  if (!sessionData || !sessionData.car || !sessionData.track) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size='large' color={RacingTheme.colors.primary} />
+        <Text style={styles.loadingText}>Loading session data...</Text>
+      </View>
+    );
+  }
 
   // Determine if we should use mobile layout (screen width < 768px)
   const isMobile = dimensions.width < 768;
@@ -1171,6 +1186,12 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
 };
 
 const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: RacingTheme.colors.background,
+  },
   mainContainer: {
     flex: 1,
     backgroundColor: RacingTheme.colors.background,

@@ -26,6 +26,7 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
   onBack,
   selectedLapIds,
 }) => {
+  // All hooks must be called before any conditional logic
   const [laps, setLaps] = useState<Lap[]>([]);
   const [fadeAnim] = useState(new Animated.Value(0));
   const [_dimensions, _setDimensions] = useState(Dimensions.get('window'));
@@ -39,18 +40,22 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
   const [sortBy, setSortBy] = useState<'time' | 'lapNumber'>('time');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
-  // Use cached laps query
+  // Use cached laps query - only when sessionData is available
   const {
     data: lapsResponse,
     isLoading,
     error,
-  } = useLaps({
-    limit: 1000,
-    drivers: 'me',
-    event: sessionData.eventId,
-    unclean: true,
-    group: 'none',
-  });
+  } = useLaps(
+    sessionData
+      ? {
+          limit: 1000,
+          drivers: 'me',
+          event: sessionData.eventId,
+          unclean: true,
+          group: 'none',
+        }
+      : null,
+  );
 
   // Set laps and default selection when data loads
   useEffect(() => {
@@ -86,6 +91,16 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
     });
     return () => subscription?.remove();
   }, []);
+
+  // Add null checks to prevent runtime errors - after all hooks are called
+  if (!sessionData || !sessionData.car || !sessionData.track) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size='large' color={RacingTheme.colors.primary} />
+        <Text style={styles.loadingText}>Loading session data...</Text>
+      </View>
+    );
+  }
 
   // Handle lap selection
   const toggleLapSelection = (lapId: string) => {
@@ -448,6 +463,12 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
 };
 
 const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: RacingTheme.colors.background,
+  },
   mainContainer: {
     flex: 1,
     backgroundColor: RacingTheme.colors.background,

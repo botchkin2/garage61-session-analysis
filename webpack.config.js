@@ -25,6 +25,17 @@ module.exports = {
       '@utils': path.resolve(__dirname, 'src/utils'),
       '@types': path.resolve(__dirname, 'src/types'),
     },
+    fallback: {
+      // React Navigation web fallbacks
+      'react-native/Libraries/Components/View/ViewStylePropTypes': false,
+      'react-native/Libraries/StyleSheet/StyleSheetTypes': false,
+      'react-native/Libraries/Image/AssetRegistry': false,
+      'react-native/Libraries/Image/AssetSourceResolver': false,
+      'react-native/Libraries/Image/resolveAssetSource': false,
+      'react-native/Libraries/Utilities/dismissKeyboard': false,
+      'react-native/Libraries/Utilities/Platform': false,
+      'react-native/Libraries/Utilities/HMRClient': false,
+    },
   },
   module: {
     rules: [
