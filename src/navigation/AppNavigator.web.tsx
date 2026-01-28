@@ -106,17 +106,28 @@ const styles = StyleSheet.create({
   tabContainer: {
     flexDirection: 'row',
     backgroundColor: RacingTheme.colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: RacingTheme.colors.surfaceElevated,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 1},
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
   },
   tab: {
     flex: 1,
     paddingVertical: RacingTheme.spacing.lg,
     alignItems: 'center',
     position: 'relative',
+    borderRadius: RacingTheme.borderRadius.md,
+    marginHorizontal: RacingTheme.spacing.sm,
+    marginVertical: RacingTheme.spacing.xs,
   },
   activeTab: {
     backgroundColor: RacingTheme.colors.surfaceElevated,
+    shadowColor: RacingTheme.colors.primary,
+    shadowOffset: {width: 0, height: 0},
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
   },
   tabText: {
     fontSize: RacingTheme.typography.body,
@@ -133,7 +144,6 @@ const styles = StyleSheet.create({
     backgroundColor: RacingTheme.colors.background,
   },
   link: {
-    textDecoration: 'none',
     flex: 1,
   },
 });

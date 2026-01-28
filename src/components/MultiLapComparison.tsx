@@ -475,6 +475,7 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+    backgroundColor: RacingTheme.colors.background,
   },
   contentContainer: {
     flexGrow: 1,

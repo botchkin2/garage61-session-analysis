@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useEffect} from 'react';
 import {View, StyleSheet} from 'react-native';
 import {SessionAnalysis} from '@/components';
 import {RacingTheme} from '@/theme';
@@ -9,9 +9,23 @@ const SessionAnalysisScreen: React.FC = () => {
   const navigate = useNavigate();
   const params = useParams();
 
+  // Validate sessionId - redirect to /laps if undefined or the string "undefined"
+  useEffect(() => {
+    const sessionId = params.sessionId;
+    if (!sessionId || sessionId === 'undefined') {
+      navigate('/laps', {replace: true});
+    }
+  }, [params.sessionId, navigate]);
+
+  // Early return if sessionId is invalid (will redirect via useEffect)
+  const sessionId = params.sessionId;
+  if (!sessionId || sessionId === 'undefined') {
+    return null;
+  }
+
   // For demo purposes, use sample data - in real app this would come from route params or API
   const sessionData: SessionData = {
-    eventId: params.sessionId || 'sample',
+    eventId: sessionId,
     eventName: 'Sample Event',
     session: 1,
     sessionType: 1,

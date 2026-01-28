@@ -9,7 +9,10 @@ const LapListScreen: React.FC = () => {
   const navigate = useNavigate();
 
   const handleSessionAnalysis = (data: SessionData) => {
-    navigate(`/session/${data.eventId || 'default'}`);
+    // Only navigate if eventId is valid (not undefined or the string "undefined")
+    if (data.eventId && data.eventId !== 'undefined') {
+      navigate(`/session/${data.eventId}`);
+    }
   };
 
   return (

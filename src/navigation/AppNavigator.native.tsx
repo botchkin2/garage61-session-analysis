@@ -79,7 +79,18 @@ const MainTabNavigator = () => {
 // Main stack navigator
 const AppNavigator = () => {
   return (
-    <NavigationContainer>
+    <NavigationContainer
+      theme={{
+        dark: true,
+        colors: {
+          primary: RacingTheme.colors.primary,
+          background: RacingTheme.colors.background,
+          card: RacingTheme.colors.surface,
+          text: RacingTheme.colors.text,
+          border: RacingTheme.colors.surfaceElevated,
+          notification: RacingTheme.colors.primary,
+        },
+      }}>
       <Stack.Navigator
         screenOptions={{
           headerStyle: {
