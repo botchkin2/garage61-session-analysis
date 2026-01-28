@@ -21,3 +21,11 @@ jobs:
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BOTRACING_61 }}
           channelId: live
           projectId: botracing-61
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+      - name: Install functions dependencies
+        run: cd functions && npm ci
+      - name: Deploy Firebase Functions
+        run: firebase deploy --only functions
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
