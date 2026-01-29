@@ -1,4 +1,4 @@
-import * as functions from 'firebase-functions';
+import {onRequest} from 'firebase-functions/v2/https';
 import {defineSecret} from 'firebase-functions/params';
 import axios, {AxiosRequestConfig} from 'axios';
 
@@ -21,9 +21,9 @@ interface Response {
 // Define the API token as a Firebase secret parameter
 const garage61ApiToken = defineSecret('GARAGE61_API_TOKEN');
 
-export const garage61Proxy = functions
-  .runWith({secrets: [garage61ApiToken]})
-  .https.onRequest(async (req: Request, res: Response) => {
+export const garage61Proxy = onRequest(
+  {secrets: [garage61ApiToken]},
+  async (req: Request, res: Response) => {
     // Set CORS headers
     res.set('Access-Control-Allow-Origin', '*');
     res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -116,4 +116,5 @@ export const garage61Proxy = functions
         });
       }
     }
-  });
+  },
+);
