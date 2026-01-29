@@ -28,4 +28,6 @@ jobs:
       - name: Install functions dependencies
         run: cd functions && npm install
       - name: Deploy Firebase Functions
+        env:
+          FIREBASE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: firebase deploy --only functions
