@@ -15,6 +15,7 @@ interface Response {
   set(header: string, value: string): void;
   status(code: number): Response;
   json(data: any): void;
+  send(data: any): void;
   end(): void;
 }
 
@@ -93,8 +94,19 @@ export const garage61Proxy = onRequest(
 
       const response = await axios(axiosConfig);
 
-      // Forward the response
-      res.status(response.status).json(response.data);
+      // Forward the response - handle CSV responses as text, others as JSON
+      const contentType = response.headers['content-type'] || '';
+      if (
+        contentType.includes('text/csv') ||
+        contentType.includes('application/csv')
+      ) {
+        // For CSV responses, return raw text data
+        res.set('Content-Type', contentType);
+        res.status(response.status).send(response.data);
+      } else {
+        // For JSON and other responses, return as JSON
+        res.status(response.status).json(response.data);
+      }
     } catch (error: any) {
       console.error('Proxy error:', error);
 
