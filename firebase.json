@@ -11,6 +11,10 @@
       {
         "source": "/api/garage61/**",
         "function": "garage61Proxy"
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
       }
     ]
   }
