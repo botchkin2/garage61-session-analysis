@@ -54,7 +54,8 @@ yarn-error.log
 # Web build
 /web-build
 
-# Firebase hosting built files (keep index.html and 404.html)
+# Firebase hosting built files (keep index.template.html and 404.html)
+/public/index.html
 /public/bundle.js
 /public/bundle.js.map
 /public/bundle.js.LICENSE.txt

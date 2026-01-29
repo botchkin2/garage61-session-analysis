@@ -87,7 +87,8 @@ module.exports = {
   },
   plugins: [
     new HtmlWebpackPlugin({
-      template: './public/index.html',
+      template: './public/index.template.html',
+      filename: 'index.html',
       inject: 'body',
       scriptLoading: 'defer',
       chunks: ['main'],
