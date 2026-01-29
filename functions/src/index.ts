@@ -51,8 +51,9 @@ export const garage61Proxy = onRequest(
         return;
       }
 
-      // Construct the target URL
-      const targetUrl = `https://garage61.net/api/v1${req.path}`;
+      // Construct the target URL by stripping the /api/garage61 prefix from req.path
+      const apiPath = req.path.replace(/^\/api\/garage61/, '');
+      const targetUrl = `https://garage61.net/api/v1${apiPath}`;
 
       // Prepare axios config
       const axiosConfig: AxiosRequestConfig = {
