@@ -24,6 +24,7 @@ jobs:
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BOTRACING_61 }}
+          channelId: live
           projectId: botracing-61
           entryPoint: .
       - name: Install functions dependencies
