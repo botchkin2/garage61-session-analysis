@@ -4,13 +4,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - 'functions/**'
-      - 'firebase.json'
-  pull_request:
-    paths:
-      - 'functions/**'
-      - 'firebase.json'
 
 permissions:
   contents: read
