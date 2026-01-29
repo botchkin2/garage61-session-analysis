@@ -99,6 +99,9 @@ yarn-error.log
 firebase-debug.log
 firestore-debug.log
 
+# Firebase Functions build output
+functions/lib/
+
 # Logs
 logs
 *.log

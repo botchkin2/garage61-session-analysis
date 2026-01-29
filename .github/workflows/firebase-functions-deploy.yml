@@ -26,9 +26,9 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
 
-      - name: Setup Firebase CLI
+      - name: Setup Firebase CLI with Service Account
         uses: w9jds/setup-firebase@main
         with:
           gcp_sa_key: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BOTRACING_61 }}

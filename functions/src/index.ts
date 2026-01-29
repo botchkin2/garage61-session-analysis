@@ -2,12 +2,28 @@ import * as functions from 'firebase-functions';
 import {defineSecret} from 'firebase-functions/params';
 import axios, {AxiosRequestConfig} from 'axios';
 
-// Define the API token as a secret parameter
+// Type definitions for Express-style request/response
+interface Request {
+  method: string;
+  path: string;
+  query: any;
+  body: any;
+  headers: any;
+}
+
+interface Response {
+  set(header: string, value: string): void;
+  status(code: number): Response;
+  json(data: any): void;
+  end(): void;
+}
+
+// Define the API token as a Firebase secret parameter
 const garage61ApiToken = defineSecret('GARAGE61_API_TOKEN');
 
-export const garage61Proxy = functions.https.onRequest(
-  {secrets: [garage61ApiToken]},
-  async (req, res) => {
+export const garage61Proxy = functions
+  .runWith({secrets: [garage61ApiToken]})
+  .https.onRequest(async (req: Request, res: Response) => {
     // Set CORS headers
     res.set('Access-Control-Allow-Origin', '*');
     res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -20,8 +36,7 @@ export const garage61Proxy = functions.https.onRequest(
     }
 
     try {
-      // Get API token from Firebase Functions params
-      // This should be the same token used in GitHub Actions builds
+      // Get API token from Firebase secret parameter
       const apiToken = garage61ApiToken.value();
 
       if (!apiToken) {
@@ -101,5 +116,4 @@ export const garage61Proxy = functions.https.onRequest(
         });
       }
     }
-  },
-);
+  });
