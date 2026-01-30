@@ -62,7 +62,7 @@ export const useLaps = (
 };
 
 // Telemetry data - cache for 7 days (expensive to fetch, rarely changes)
-export const useTelemetry = (lapId: string) => {
+export const useTelemetry = (lapId: string, options?: {enabled?: boolean}) => {
   return useQuery({
     queryKey: queryKeys.telemetry(lapId),
     queryFn: async () => {
@@ -72,6 +72,10 @@ export const useTelemetry = (lapId: string) => {
     },
     staleTime: 7 * 24 * 60 * 60 * 1000, // 7 days
     gcTime: 7 * 24 * 60 * 60 * 1000, // 7 days (keep in cache for 7 days)
-    enabled: !!lapId, // Only run if lapId exists
+    // Controlled enabling to prevent premature requests
+    enabled: options?.enabled ?? !!lapId,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 };

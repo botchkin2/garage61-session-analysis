@@ -52,7 +52,17 @@ const LapTelemetryLoader: React.FC<{
   onLapCompleted: (lapId: string, data: ProcessedLapData | null) => void;
   lapIndex: number;
 }> = ({lap, onLapCompleted, lapIndex}) => {
-  const query = useTelemetry(lap.id);
+  // Stagger CSV loading to prevent overwhelming the server
+  const [canLoad, setCanLoad] = useState(false);
+
+  // Delay loading based on lap index to prevent all requests at once
+  useEffect(() => {
+    const delay = lapIndex * 100; // 100ms delay between each lap
+    const timer = setTimeout(() => setCanLoad(true), delay);
+    return () => clearTimeout(timer);
+  }, [lapIndex]);
+
+  const query = useTelemetry(lap.id, {enabled: canLoad});
   const hasCompleted = useRef(false);
 
   useEffect(() => {

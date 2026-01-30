@@ -139,18 +139,12 @@ class ApiClient {
 
   // Get CSV data (for telemetry)
   async getCsv(endpoint: string): Promise<string> {
-    try {
-      const response: AxiosResponse<string> = await this.client.get(endpoint, {
-        responseType: 'text',
-        headers: {
-          Accept: 'text/csv',
-        },
-      });
-      return response.data;
-    } catch (error) {
-      console.error('API Client: CSV request failed:', error);
-      throw error;
-    }
+    return this.deduplicatedRequest<string>('GET', endpoint, {
+      responseType: 'text',
+      headers: {
+        Accept: 'text/csv',
+      },
+    });
   }
 
   // Check if API is accessible
