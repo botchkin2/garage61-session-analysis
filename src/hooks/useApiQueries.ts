@@ -5,7 +5,9 @@ import {apiClient} from '@/utils/api';
 export const queryKeys = {
   user: ['user'] as const,
   laps: (params?: Record<string, any>) => {
-    if (!params) return ['laps'];
+    if (!params) {
+      return ['laps'];
+    }
     // Create a stable query key by sorting object keys and creating a string
     const sortedKeys = Object.keys(params).sort();
     const keyString = sortedKeys.map(key => `${key}:${params[key]}`).join('|');
