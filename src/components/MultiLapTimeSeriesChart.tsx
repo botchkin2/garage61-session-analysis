@@ -24,7 +24,7 @@ interface NormalizedSeriesData {
   normalizedData: Float32Array;
 }
 
-interface ProcessedLapData {
+export interface ProcessedLapData {
   raw: TimeSeriesData[];
   normalized: TimeSeriesData[];
   normalizedSeries: NormalizedSeriesData[];
@@ -44,10 +44,21 @@ interface MultiLapTimeSeriesChartProps {
   laps: Lap[];
   selectedSeries: string[];
   title?: string;
+  // External control props (when provided, component uses these instead of internal state)
+  externalIsPlaying?: boolean;
+  externalPlaybackSpeed?: number;
+  externalZoomLevel?: number;
+  externalShowTrackMap?: boolean;
+  onSeriesChange?: (series: string[]) => void;
+  // Pre-loaded data to avoid duplicate API calls
+  preloadedData?: Map<string, ProcessedLapData>;
+  // Shared position tracking
+  externalCurrentPosition?: number;
+  onPositionChange?: (position: number) => void;
 }
 
 // Component to handle individual lap telemetry loading
-const LapTelemetryLoader: React.FC<{
+export const LapTelemetryLoader: React.FC<{
   lap: Lap;
   onLapCompleted: (lapId: string, data: ProcessedLapData | null) => void;
   lapIndex: number;
@@ -164,15 +175,45 @@ const LapTelemetryLoader: React.FC<{
 
 export const MultiLapTimeSeriesChart: React.FC<
   MultiLapTimeSeriesChartProps
-> = ({laps, selectedSeries, title = 'Multi-Lap Comparison'}) => {
+> = ({
+  laps,
+  selectedSeries,
+  title = 'Multi-Lap Comparison',
+  externalIsPlaying,
+  externalPlaybackSpeed,
+  externalZoomLevel,
+  externalShowTrackMap,
+  onSeriesChange,
+  preloadedData,
+  externalCurrentPosition,
+  onPositionChange,
+}) => {
+  // Use preloaded data if provided, otherwise manage our own state
   const [lapDataMap, setLapDataMap] = useState<Map<string, ProcessedLapData>>(
-    new Map(),
+    preloadedData || new Map(),
   );
-  const [isLoading, setIsLoading] = useState(true);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [playbackSpeed, setPlaybackSpeed] = useState(1);
-  const [zoomLevel, setZoomLevel] = useState(3);
-  const [showTrackMap, setShowTrackMap] = useState(true);
+  const [isLoading, setIsLoading] = useState(!preloadedData);
+
+  // Use external controls if provided, otherwise use internal state
+  const useExternalControls = externalIsPlaying !== undefined;
+  const [internalIsPlaying, setInternalIsPlaying] = useState(false);
+  const [internalPlaybackSpeed, setInternalPlaybackSpeed] = useState(1);
+  const [internalZoomLevel, setInternalZoomLevel] = useState(3);
+  const [internalShowTrackMap, setInternalShowTrackMap] = useState(true);
+
+  // Effective values (external or internal)
+  const isPlaying = useExternalControls
+    ? externalIsPlaying!
+    : internalIsPlaying;
+  const playbackSpeed = useExternalControls
+    ? externalPlaybackSpeed!
+    : internalPlaybackSpeed;
+  const zoomLevel = useExternalControls
+    ? externalZoomLevel!
+    : internalZoomLevel;
+  const showTrackMap = useExternalControls
+    ? externalShowTrackMap!
+    : internalShowTrackMap;
   const animationRef = useRef<NodeJS.Timeout | null>(null);
   const referenceLapDataRef = useRef<ProcessedLapData | null>(null);
   const visibleDataCache = useRef<{
@@ -184,61 +225,13 @@ export const MultiLapTimeSeriesChart: React.FC<
     endIdx: number;
   } | null>(null);
 
-  // Simple counter-based completion tracking
-  const [pendingCount, setPendingCount] = useState(0);
-
-  // Track previous laps to avoid unnecessary resets
-  const prevLapsRef = useRef<string>('');
-  const currentLapsKey = laps
-    .map(lap => lap.id)
-    .sort()
-    .join(',');
-
-  // Initialize pending count when laps change
+  // Update lapDataMap when preloadedData changes
   useEffect(() => {
-    if (laps.length > 0 && currentLapsKey !== prevLapsRef.current) {
-      // Count how many laps don't already have data loaded
-      const lapsNeedingLoad = laps.filter(lap => !lapDataMap.has(lap.id));
-      const newPendingCount = lapsNeedingLoad.length;
-
-      prevLapsRef.current = currentLapsKey;
-      setPendingCount(newPendingCount);
-
-      // Don't reset lapDataMap - keep existing cached data
-      // Only set loading if we actually have work to do
-      if (newPendingCount > 0) {
-        setIsLoading(true);
-      } else {
-        setIsLoading(false);
-      }
-    }
-  }, [currentLapsKey, laps, lapDataMap]);
-
-  const handleLapCompleted = useCallback(
-    (lapId: string, data: ProcessedLapData | null) => {
-      // Update data map
-      if (data) {
-        setLapDataMap(prev => {
-          const newMap = new Map(prev);
-          newMap.set(lapId, data);
-          return newMap;
-        });
-      }
-
-      // Decrement pending count
-      setPendingCount(prev => Math.max(0, prev - 1));
-    },
-    [],
-  );
-
-  // Check if all laps are completed
-  useEffect(() => {
-    if (pendingCount === 0 && laps.length > 0) {
+    if (preloadedData) {
+      setLapDataMap(preloadedData);
       setIsLoading(false);
-    } else if (pendingCount > 0) {
-      setIsLoading(true);
     }
-  }, [pendingCount, laps.length]);
+  }, [preloadedData]);
 
   // Use first lap as reference for position/index-based playback (like TimeSeriesChart)
   const referenceLapData = useMemo(() => {
@@ -312,8 +305,8 @@ export const MultiLapTimeSeriesChart: React.FC<
 
   // Helper functions for position management (like TimeSeriesChart)
   const getCurrentPosition = useCallback(
-    (): number => visibleData.startIdx,
-    [visibleData.startIdx],
+    (): number => externalCurrentPosition ?? visibleData.startIdx,
+    [externalCurrentPosition, visibleData.startIdx],
   );
 
   const updatePosition = useCallback(
@@ -321,8 +314,12 @@ export const MultiLapTimeSeriesChart: React.FC<
       if (referenceLapDataRef.current) {
         updateVisibleData(referenceLapDataRef.current.raw, newPosition);
       }
+      // Update external position if callback provided
+      if (onPositionChange) {
+        onPositionChange(newPosition);
+      }
     },
-    [updateVisibleData],
+    [updateVisibleData, onPositionChange],
   );
 
   // Start playback (like TimeSeriesChart)
@@ -330,7 +327,11 @@ export const MultiLapTimeSeriesChart: React.FC<
     if (isPlaying || !referenceLapData) {
       return;
     }
-    setIsPlaying(true);
+    if (useExternalControls) {
+      // External controls don't need to set state here - it's handled by parent
+      return;
+    }
+    setInternalIsPlaying(true);
 
     const animate = () => {
       const currentPos = getCurrentPosition();
@@ -366,12 +367,14 @@ export const MultiLapTimeSeriesChart: React.FC<
 
   // Stop playback
   const stopPlayback = useCallback(() => {
-    setIsPlaying(false);
+    if (!useExternalControls) {
+      setInternalIsPlaying(false);
+    }
     if (animationRef.current) {
       clearInterval(animationRef.current);
       animationRef.current = null;
     }
-  }, []);
+  }, [useExternalControls]);
 
   // Reset playback
   const resetPlayback = useCallback(() => {
@@ -492,9 +495,6 @@ export const MultiLapTimeSeriesChart: React.FC<
 
   // Current position is tracked by currentPosition (index, like TimeSeriesChart)
 
-  // Get track map from first lap (all laps should have same track)
-  const trackMap = Array.from(lapDataMap.values())[0]?.trackMap;
-
   if (laps.length === 0) {
     return (
       <View style={styles.container}>
@@ -505,18 +505,6 @@ export const MultiLapTimeSeriesChart: React.FC<
 
   return (
     <View style={styles.container}>
-      {/* Render telemetry loaders - these trigger the queries */}
-      {laps.map((lap, index) => {
-        return (
-          <LapTelemetryLoader
-            key={lap.id}
-            lap={lap}
-            onLapCompleted={handleLapCompleted}
-            lapIndex={index}
-          />
-        );
-      })}
-
       {isLoading && (
         <View style={styles.loadingOverlay}>
           <Text style={styles.loadingText}>
@@ -544,210 +532,173 @@ export const MultiLapTimeSeriesChart: React.FC<
             {key: 'steeringWheelAngle', label: 'Steering'},
             {key: 'speed', label: 'Speed'},
             {key: 'gear', label: 'Gear'},
-          ].map(series => (
-            <Text key={series.key} style={styles.seriesLabel}>
-              {series.label}
-            </Text>
-          ))}
-        </View>
-      </View>
-
-      {/* Controls */}
-      <View style={styles.compactControls}>
-        <View style={styles.transportBar}>
-          {/* Row 1: Playback controls and map toggle */}
-          <View style={styles.controlsRow}>
-            <TouchableOpacity style={styles.miniButton} onPress={resetPlayback}>
-              <Text style={styles.miniText}>🔄</Text>
-            </TouchableOpacity>
-
-            <View style={styles.playbackGroup}>
+          ].map(series => {
+            const isSelected = selectedSeries.includes(series.key);
+            return onSeriesChange ? (
               <TouchableOpacity
-                style={styles.miniButton}
-                onPress={() => {
-                  setPlaybackSpeed(Math.max(-5.0, playbackSpeed - 0.5));
-                  if (!isPlaying) {
-                    startPlayback();
-                  }
-                }}>
-                <Text style={styles.miniText}>⏪</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.miniButton}
-                onPress={() => {
-                  updatePosition(Math.max(0, getCurrentPosition() - 50));
-                  if (!isPlaying) {
-                    startPlayback();
-                  }
-                }}>
-                <Text style={styles.miniText}>⏮️</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
+                key={series.key}
                 style={[
-                  styles.playButtonMini,
-                  isPlaying && styles.playButtonActive,
+                  styles.seriesButton,
+                  isSelected && styles.seriesButtonActive,
                 ]}
                 onPress={() => {
-                  if (isPlaying) {
-                    stopPlayback();
+                  if (isSelected) {
+                    if (selectedSeries.length > 1) {
+                      onSeriesChange(
+                        selectedSeries.filter(s => s !== series.key),
+                      );
+                    }
                   } else {
-                    startPlayback();
+                    onSeriesChange([...selectedSeries, series.key]);
                   }
                 }}>
-                <Text style={styles.playText}>{isPlaying ? '⏸️' : '▶️'}</Text>
+                <Text
+                  style={[
+                    styles.seriesButtonText,
+                    isSelected && styles.seriesButtonTextActive,
+                  ]}>
+                  {isSelected ? '●' : '○'} {series.label}
+                </Text>
               </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.miniButton}
-                onPress={() => {
-                  updatePosition(
-                    Math.min(
-                      (referenceLapData?.totalPoints || 0) - 1,
-                      getCurrentPosition() + 50,
-                    ),
-                  );
-                  if (!isPlaying) {
-                    startPlayback();
-                  }
-                }}>
-                <Text style={styles.miniText}>⏭️</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.miniButton}
-                onPress={() => {
-                  setPlaybackSpeed(Math.min(5.0, playbackSpeed + 0.5));
-                  if (!isPlaying) {
-                    startPlayback();
-                  }
-                }}>
-                <Text style={styles.miniText}>⏩</Text>
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              style={[
-                styles.miniButton,
-                showTrackMap && styles.miniButtonActive,
-              ]}
-              onPress={() => setShowTrackMap(!showTrackMap)}>
-              <Text style={styles.miniText}>🗺️</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Row 2: Status and zoom controls */}
-          <View style={styles.controlsRow}>
-            <View style={styles.statusGroup}>
-              <Text
-                style={[
-                  styles.statusText,
-                  playbackSpeed < 0 && styles.statusTextReverse,
-                ]}>
-                {playbackSpeed.toFixed(1)}x
+            ) : (
+              <Text key={series.key} style={styles.seriesLabel}>
+                {series.label}
               </Text>
-              <Text style={styles.statusText}>
-                {Math.round(
-                  (getCurrentPosition() /
-                    (referenceLapData?.totalPoints || 1)) *
-                    100,
-                )}
-                %
-              </Text>
-            </View>
-
-            <View style={styles.zoomGroup}>
-              <TouchableOpacity
-                style={styles.miniButton}
-                onPress={() => setZoomLevel(Math.max(1, zoomLevel - 1))}>
-                <Text style={styles.miniText}>🔍-</Text>
-              </TouchableOpacity>
-              <Text style={styles.zoomLevelText}>{zoomLevel}</Text>
-              <TouchableOpacity
-                style={styles.miniButton}
-                onPress={() => setZoomLevel(Math.min(5, zoomLevel + 1))}>
-                <Text style={styles.miniText}>🔍+</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+            );
+          })}
         </View>
       </View>
 
-      {/* Track Map */}
-      {showTrackMap && trackMap && (
-        <View style={styles.trackMapContainer}>
-          <View style={styles.trackMap}>
-            <svg
-              width={200}
-              height={150}
-              style={styles.trackMapSvg}
-              viewBox='0 0 200 150'>
-              <path
-                d={(() => {
-                  if (!trackMap || trackMap.coordinates.length < 2) {
-                    return '';
-                  }
+      {/* Controls - only show when not using external controls */}
+      {!useExternalControls && (
+        <View style={styles.compactControls}>
+          <View style={styles.transportBar}>
+            {/* Row 1: Playback controls and map toggle */}
+            <View style={styles.controlsRow}>
+              <TouchableOpacity
+                style={styles.miniButton}
+                onPress={resetPlayback}>
+                <Text style={styles.miniText}>🔄</Text>
+              </TouchableOpacity>
 
-                  let pathData = '';
-                  trackMap.coordinates.forEach((coord, index) => {
-                    const x = coord.x * 180 + 10;
-                    const y = coord.y * 130 + 10;
-
-                    if (index === 0) {
-                      pathData += `M ${x} ${y}`;
-                    } else {
-                      pathData += ` L ${x} ${y}`;
+              <View style={styles.playbackGroup}>
+                <TouchableOpacity
+                  style={styles.miniButton}
+                  onPress={() => {
+                    setInternalPlaybackSpeed(
+                      Math.max(-5.0, playbackSpeed - 0.5),
+                    );
+                    if (!isPlaying) {
+                      startPlayback();
                     }
-                  });
+                  }}>
+                  <Text style={styles.miniText}>⏪</Text>
+                </TouchableOpacity>
 
-                  if (trackMap.coordinates.length > 2) {
-                    const firstCoord = trackMap.coordinates[0];
-                    const x = firstCoord.x * 180 + 10;
-                    const y = firstCoord.y * 130 + 10;
-                    pathData += ` L ${x} ${y}`;
-                  }
+                <TouchableOpacity
+                  style={styles.miniButton}
+                  onPress={() => {
+                    updatePosition(Math.max(0, getCurrentPosition() - 50));
+                    if (!isPlaying) {
+                      startPlayback();
+                    }
+                  }}>
+                  <Text style={styles.miniText}>⏮️</Text>
+                </TouchableOpacity>
 
-                  return pathData;
-                })()}
-                stroke='#2196F3'
-                strokeWidth={2}
-                fill='none'
-                strokeLinecap='round'
-                strokeLinejoin='round'
-              />
+                <TouchableOpacity
+                  style={[
+                    styles.playButtonMini,
+                    isPlaying && styles.playButtonActive,
+                  ]}
+                  onPress={() => {
+                    if (isPlaying) {
+                      stopPlayback();
+                    } else {
+                      startPlayback();
+                    }
+                  }}>
+                  <Text style={styles.playText}>{isPlaying ? '⏸️' : '▶️'}</Text>
+                </TouchableOpacity>
 
-              {/* Current position indicator */}
-              {(() => {
-                if (!trackMap || trackMap.coordinates.length === 0) {
-                  return null;
-                }
+                <TouchableOpacity
+                  style={styles.miniButton}
+                  onPress={() => {
+                    updatePosition(
+                      Math.min(
+                        (referenceLapData?.totalPoints || 0) - 1,
+                        getCurrentPosition() + 50,
+                      ),
+                    );
+                    if (!isPlaying) {
+                      startPlayback();
+                    }
+                  }}>
+                  <Text style={styles.miniText}>⏭️</Text>
+                </TouchableOpacity>
 
-                const currentIndex = Math.floor(getCurrentPosition());
-                const currentCoord =
-                  trackMap.coordinates[
-                    Math.min(currentIndex, trackMap.coordinates.length - 1)
-                  ];
+                <TouchableOpacity
+                  style={styles.miniButton}
+                  onPress={() => {
+                    setInternalPlaybackSpeed(
+                      Math.min(5.0, playbackSpeed + 0.5),
+                    );
+                    if (!isPlaying) {
+                      startPlayback();
+                    }
+                  }}>
+                  <Text style={styles.miniText}>⏩</Text>
+                </TouchableOpacity>
+              </View>
 
-                if (!currentCoord) {
-                  return null;
-                }
+              <TouchableOpacity
+                style={[
+                  styles.miniButton,
+                  showTrackMap && styles.miniButtonActive,
+                ]}
+                onPress={() => setInternalShowTrackMap(!showTrackMap)}>
+                <Text style={styles.miniText}>🗺️</Text>
+              </TouchableOpacity>
+            </View>
 
-                const x = currentCoord.x * 180 + 10;
-                const y = currentCoord.y * 130 + 10;
+            {/* Row 2: Status and zoom controls */}
+            <View style={styles.controlsRow}>
+              <View style={styles.statusGroup}>
+                <Text
+                  style={[
+                    styles.statusText,
+                    playbackSpeed < 0 && styles.statusTextReverse,
+                  ]}>
+                  {playbackSpeed.toFixed(1)}x
+                </Text>
+                <Text style={styles.statusText}>
+                  {Math.round(
+                    (getCurrentPosition() /
+                      (referenceLapData?.totalPoints || 1)) *
+                      100,
+                  )}
+                  %
+                </Text>
+              </View>
 
-                return (
-                  <circle
-                    cx={x}
-                    cy={y}
-                    r={4}
-                    fill='#FF5722'
-                    stroke='#FFFFFF'
-                    strokeWidth={2}
-                  />
-                );
-              })()}
-            </svg>
+              <View style={styles.zoomGroup}>
+                <TouchableOpacity
+                  style={styles.miniButton}
+                  onPress={() =>
+                    setInternalZoomLevel(Math.max(1, zoomLevel - 1))
+                  }>
+                  <Text style={styles.miniText}>🔍-</Text>
+                </TouchableOpacity>
+                <Text style={styles.zoomLevelText}>{zoomLevel}</Text>
+                <TouchableOpacity
+                  style={styles.miniButton}
+                  onPress={() =>
+                    setInternalZoomLevel(Math.min(5, zoomLevel + 1))
+                  }>
+                  <Text style={styles.miniText}>🔍+</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
         </View>
       )}
@@ -900,65 +851,6 @@ export const MultiLapTimeSeriesChart: React.FC<
         </View>
       </View>
 
-      {/* Legend */}
-      <View style={styles.legendSection}>
-        <Text style={styles.legendTitle}>LEGEND</Text>
-
-        {/* Series Legend */}
-        <View style={styles.legendGroup}>
-          <Text style={styles.legendGroupTitle}>Data Series</Text>
-          <View style={styles.legendItems}>
-            {Object.entries(SERIES_BASE_COLORS).map(([seriesKey, color]) => {
-              const seriesLabels = {
-                brake: 'Brake',
-                throttle: 'Throttle',
-                rpm: 'RPM',
-                steeringWheelAngle: 'Steering',
-                speed: 'Speed',
-                gear: 'Gear',
-              };
-              return (
-                <View key={seriesKey} style={styles.legendItem}>
-                  <View
-                    style={[styles.legendColorBox, {backgroundColor: color}]}
-                  />
-                  <Text style={styles.legendText}>
-                    {seriesLabels[seriesKey as keyof typeof seriesLabels]}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* Lap Legend */}
-        {laps.length > 1 && (
-          <View style={styles.legendGroup}>
-            <Text style={styles.legendGroupTitle}>Laps</Text>
-            <View style={styles.legendItems}>
-              {laps.map((lap, index) => {
-                // Use the first series color (brake) to represent this lap's color scheme
-                const lapColor =
-                  LAP_COLOR_SCHEMES[index]?.brake || SERIES_BASE_COLORS.brake;
-                return (
-                  <View key={lap.id} style={styles.legendItem}>
-                    <View
-                      style={[
-                        styles.legendColorBox,
-                        {backgroundColor: lapColor},
-                      ]}
-                    />
-                    <Text style={styles.legendText}>
-                      Lap {lap.lapNumber} {index === 0 && '(Reference)'}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-        )}
-      </View>
-
       <View style={styles.stats}>
         <Text style={styles.statsText}>
           Position:{' '}
@@ -1010,6 +902,28 @@ const styles = StyleSheet.create({
     color: '#cccccc',
     fontSize: 14,
     marginRight: 8,
+  },
+  seriesButton: {
+    backgroundColor: '#333',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#444',
+    marginRight: 8,
+  },
+  seriesButtonActive: {
+    backgroundColor: '#2196F3',
+    borderColor: '#2196F3',
+  },
+  seriesButtonText: {
+    fontSize: 12,
+    color: '#cccccc',
+    fontWeight: '500',
+  },
+  seriesButtonTextActive: {
+    color: '#ffffff',
+    fontWeight: 'bold',
   },
   loadingText: {
     color: '#cccccc',

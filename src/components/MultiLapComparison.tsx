@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useMemo} from 'react';
+import React, {useState, useEffect, useMemo, useCallback} from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,18 @@ import {RacingCard, RacingButton, RacingDivider} from '@/components';
 import {RacingTheme} from '@/theme';
 import {SessionData, Lap} from '@/types';
 import {useLaps} from '@/hooks/useApiQueries';
-import {MultiLapTimeSeriesChart} from './MultiLapTimeSeriesChart';
+import {
+  MultiLapTimeSeriesChart,
+  LapTelemetryLoader,
+  ProcessedLapData,
+} from './MultiLapTimeSeriesChart';
+import {SERIES_BASE_COLORS, LAP_COLOR_SCHEMES} from '@/utils/colors';
+
+interface ChartConfig {
+  id: string;
+  selectedSeries: string[];
+  title: string;
+}
 
 interface MultiLapComparisonProps {
   sessionData: SessionData;
@@ -33,12 +44,30 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
   const [internalSelectedLapIds, setInternalSelectedLapIds] = useState<
     Set<string>
   >(new Set());
-  const [selectedSeries, setSelectedSeries] = useState<string[]>([
-    'brake',
-    'throttle',
-  ]);
   const [sortBy, setSortBy] = useState<'time' | 'lapNumber'>('time');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  // Shared control states for all charts
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [zoomLevel, setZoomLevel] = useState(3);
+  const [showTrackMap, setShowTrackMap] = useState(true);
+  const [currentPosition, setCurrentPosition] = useState(0);
+
+  // Multiple charts state
+  const [charts, setCharts] = useState<ChartConfig[]>([
+    {
+      id: 'chart-1',
+      selectedSeries: ['brake', 'throttle'],
+      title: 'Lap Comparison',
+    },
+  ]);
+
+  // Data loading state for sharing across charts
+  const [lapDataMap, setLapDataMap] = useState<Map<string, ProcessedLapData>>(
+    new Map(),
+  );
+  const [dataLoading, setDataLoading] = useState(true);
 
   // Memoize query parameters to ensure stable reference for React Query deduplication
   const lapsQueryParams = useMemo(
@@ -94,6 +123,49 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
     return () => subscription?.remove();
   }, []);
 
+  // Get selected laps (needs to be before early return for useEffect)
+  const selectedLaps = laps
+    .filter(lap => internalSelectedLapIds.has(lap.id))
+    .sort((a, b) => {
+      let comparison = 0;
+      if (sortBy === 'time') {
+        comparison = a.lapTime - b.lapTime;
+      } else if (sortBy === 'lapNumber') {
+        comparison = a.lapNumber - b.lapNumber;
+      }
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+
+  // Shared position tracking for track map
+  const getCurrentPosition = useCallback(
+    () => currentPosition,
+    [currentPosition],
+  );
+
+  const updatePosition = useCallback((newPosition: number) => {
+    setCurrentPosition(newPosition);
+  }, []);
+
+  // Data loading handler for sharing across all charts
+  const handleLapCompleted = useCallback(
+    (lapId: string, data: ProcessedLapData | null) => {
+      if (data) {
+        setLapDataMap(prev => {
+          const newMap = new Map(prev);
+          newMap.set(lapId, data);
+          return newMap;
+        });
+      }
+    },
+    [],
+  );
+
+  // Check if all lap data is loaded
+  useEffect(() => {
+    const allLapsLoaded = selectedLaps.every(lap => lapDataMap.has(lap.id));
+    setDataLoading(!allLapsLoaded);
+  }, [selectedLaps, lapDataMap]);
+
   // Add null checks to prevent runtime errors - after all hooks are called
   if (!sessionData || !sessionData.car || !sessionData.track) {
     return (
@@ -131,6 +203,52 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
     setInternalSelectedLapIds(new Set());
   };
 
+  // Chart management functions
+  const addChart = () => {
+    const newChartId = `chart-${charts.length + 1}`;
+    const newChart: ChartConfig = {
+      id: newChartId,
+      selectedSeries: ['brake', 'throttle'], // Default series for new charts
+      title: `Chart ${charts.length + 1}`,
+    };
+    setCharts(prev => [...prev, newChart]);
+  };
+
+  const removeChart = (chartId: string) => {
+    if (charts.length > 1) {
+      setCharts(prev => prev.filter(chart => chart.id !== chartId));
+    }
+  };
+
+  const updateChartSeries = (chartId: string, newSeries: string[]) => {
+    setCharts(prev =>
+      prev.map(chart =>
+        chart.id === chartId ? {...chart, selectedSeries: newSeries} : chart,
+      ),
+    );
+  };
+
+  // Shared control functions
+  const togglePlayback = () => {
+    setIsPlaying(prev => !prev);
+  };
+
+  const resetPlayback = () => {
+    setIsPlaying(false);
+  };
+
+  const updatePlaybackSpeed = (speed: number) => {
+    setPlaybackSpeed(speed);
+  };
+
+  const updateZoom = (zoom: number) => {
+    setZoomLevel(zoom);
+  };
+
+  const toggleTrackMap = () => {
+    setShowTrackMap(prev => !prev);
+  };
+
   // Handle sort change
   const handleSortChange = (newSortBy: 'time' | 'lapNumber') => {
     if (sortBy === newSortBy) {
@@ -140,19 +258,6 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
       setSortDirection('asc');
     }
   };
-
-  // Get selected laps
-  const selectedLaps = laps
-    .filter(lap => internalSelectedLapIds.has(lap.id))
-    .sort((a, b) => {
-      let comparison = 0;
-      if (sortBy === 'time') {
-        comparison = a.lapTime - b.lapTime;
-      } else if (sortBy === 'lapNumber') {
-        comparison = a.lapNumber - b.lapNumber;
-      }
-      return sortDirection === 'asc' ? comparison : -comparison;
-    });
 
   const formatLapTime = (seconds: number): string => {
     const minutes = Math.floor(seconds / 60);
@@ -197,6 +302,22 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
 
   return (
     <View style={styles.mainContainer}>
+      {/* Load telemetry data once for all charts */}
+      {selectedLaps.map((lap, index) => {
+        // Only load if not already loaded
+        if (!lapDataMap.has(lap.id)) {
+          return (
+            <LapTelemetryLoader
+              key={lap.id}
+              lap={lap}
+              onLapCompleted={handleLapCompleted}
+              lapIndex={index}
+            />
+          );
+        }
+        return null;
+      })}
+
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.contentContainer}
@@ -226,49 +347,16 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
               </View>
             </View>
 
-            {/* Series Selection */}
-            <View style={styles.seriesSection}>
-              <Text style={styles.sectionTitle}>DATA SERIES</Text>
-              <View style={styles.seriesButtons}>
-                {[
-                  {key: 'brake', label: 'Brake'},
-                  {key: 'throttle', label: 'Throttle'},
-                  {key: 'rpm', label: 'RPM'},
-                  {key: 'steeringWheelAngle', label: 'Steering'},
-                  {key: 'speed', label: 'Speed'},
-                  {key: 'gear', label: 'Gear'},
-                ].map(series => {
-                  const isSelected = selectedSeries.includes(series.key);
-                  return (
-                    <TouchableOpacity
-                      key={series.key}
-                      style={[
-                        styles.seriesButton,
-                        isSelected && styles.seriesButtonActive,
-                      ]}
-                      onPress={() => {
-                        if (isSelected) {
-                          if (selectedSeries.length > 1) {
-                            setSelectedSeries(
-                              selectedSeries.filter(s => s !== series.key),
-                            );
-                          }
-                        } else {
-                          setSelectedSeries([...selectedSeries, series.key]);
-                        }
-                      }}>
-                      <Text
-                        style={[
-                          styles.seriesButtonText,
-                          isSelected && styles.seriesButtonTextActive,
-                        ]}>
-                        {isSelected ? '●' : '○'} {series.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
+            {/* Add Chart Button */}
+            {selectedLaps.length > 0 && !dataLoading && (
+              <View style={styles.addChartButtonContainer}>
+                <TouchableOpacity
+                  style={styles.addChartButton}
+                  onPress={addChart}>
+                  <Text style={styles.addChartButtonText}>+ ADD CHART</Text>
+                </TouchableOpacity>
               </View>
-            </View>
+            )}
 
             {/* Lap Selection Controls */}
             <View style={styles.selectionSection}>
@@ -296,14 +384,329 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
               </Text>
             </View>
 
-            {/* Chart */}
+            {/* Shared Controls */}
             {selectedLaps.length > 0 && (
-              <View style={styles.chartSection}>
-                <MultiLapTimeSeriesChart
-                  laps={selectedLaps}
-                  selectedSeries={selectedSeries}
-                  title='Lap Comparison'
+              <View style={styles.sharedControlsSection}>
+                <Text style={styles.sectionTitle}>SHARED CONTROLS</Text>
+                <View style={styles.sharedControls}>
+                  {/* Row 1: Playback Controls */}
+                  <View style={styles.controlsRow}>
+                    <TouchableOpacity
+                      style={styles.controlButton}
+                      onPress={resetPlayback}>
+                      <Text style={styles.controlButtonText}>🔄 RESET</Text>
+                    </TouchableOpacity>
+
+                    <View style={styles.playbackGroup}>
+                      <TouchableOpacity
+                        style={styles.controlButton}
+                        onPress={() =>
+                          updatePlaybackSpeed(
+                            Math.max(-5.0, playbackSpeed - 0.5),
+                          )
+                        }>
+                        <Text style={styles.controlButtonText}>⏪</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.controlButton}
+                        onPress={() =>
+                          updatePosition(Math.max(0, getCurrentPosition() - 50))
+                        }>
+                        <Text style={styles.controlButtonText}>⏮️</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.playButton,
+                          isPlaying && styles.playButtonActive,
+                        ]}
+                        onPress={togglePlayback}>
+                        <Text style={styles.playButtonText}>
+                          {isPlaying ? '⏸️' : '▶️'}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.controlButton}
+                        onPress={() =>
+                          updatePosition(
+                            Math.min(
+                              (Array.from(lapDataMap.values())[0]
+                                ?.totalPoints || 0) - 1,
+                              getCurrentPosition() + 50,
+                            ),
+                          )
+                        }>
+                        <Text style={styles.controlButtonText}>⏭️</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.controlButton}
+                        onPress={() =>
+                          updatePlaybackSpeed(
+                            Math.min(5.0, playbackSpeed + 0.5),
+                          )
+                        }>
+                        <Text style={styles.controlButtonText}>⏩</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.controlButton,
+                        showTrackMap && styles.controlButtonActive,
+                      ]}
+                      onPress={toggleTrackMap}>
+                      <Text style={styles.controlButtonText}>🗺️ MAP</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Row 2: Zoom Controls */}
+                  <View style={styles.controlsRow}>
+                    <View style={styles.zoomGroup}>
+                      <TouchableOpacity
+                        style={styles.controlButton}
+                        onPress={() => updateZoom(Math.max(1, zoomLevel - 1))}>
+                        <Text style={styles.controlButtonText}>🔍-</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.zoomText}>{zoomLevel}</Text>
+                      <TouchableOpacity
+                        style={styles.controlButton}
+                        onPress={() => updateZoom(Math.min(5, zoomLevel + 1))}>
+                        <Text style={styles.controlButtonText}>🔍+</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.statusGroup}>
+                      <Text style={styles.statusText}>
+                        Speed: {playbackSpeed.toFixed(1)}x
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Row 3: Add Chart Button */}
+                </View>
+              </View>
+            )}
+
+            {/* Shared Track Map */}
+            {showTrackMap &&
+              selectedLaps.length > 0 &&
+              !dataLoading &&
+              (() => {
+                // Get track map from the first available lap data
+                const firstLapData = Array.from(lapDataMap.values())[0];
+                const trackMap = firstLapData?.trackMap;
+                const referenceLapData = Array.from(lapDataMap.values())[0]; // Use first lap as reference
+
+                if (!trackMap) {
+                  return null;
+                }
+
+                return (
+                  <View style={styles.sharedTrackMapContainer}>
+                    <View style={styles.sharedTrackMap}>
+                      <svg
+                        width={250}
+                        height={180}
+                        style={styles.trackMapSvg}
+                        viewBox='0 0 250 180'>
+                        <path
+                          d={(() => {
+                            if (!trackMap || trackMap.coordinates.length < 2) {
+                              return '';
+                            }
+
+                            let pathData = '';
+                            trackMap.coordinates.forEach((coord, index) => {
+                              const x = coord.x * 230 + 10;
+                              const y = coord.y * 160 + 10;
+
+                              if (index === 0) {
+                                pathData += `M ${x} ${y}`;
+                              } else {
+                                pathData += ` L ${x} ${y}`;
+                              }
+                            });
+
+                            if (trackMap.coordinates.length > 2) {
+                              const firstCoord = trackMap.coordinates[0];
+                              const x = firstCoord.x * 230 + 10;
+                              const y = firstCoord.y * 160 + 10;
+                              pathData += ` L ${x} ${y}`;
+                            }
+
+                            return pathData;
+                          })()}
+                          stroke='#2196F3'
+                          strokeWidth={3}
+                          fill='none'
+                          strokeLinecap='round'
+                          strokeLinejoin='round'
+                        />
+
+                        {/* Current position indicator */}
+                        {(() => {
+                          if (
+                            !trackMap ||
+                            trackMap.coordinates.length === 0 ||
+                            !referenceLapData
+                          ) {
+                            return null;
+                          }
+
+                          // Use the shared playback position
+                          const currentIndex = Math.floor(getCurrentPosition());
+                          const currentCoord =
+                            trackMap.coordinates[
+                              Math.min(
+                                currentIndex,
+                                trackMap.coordinates.length - 1,
+                              )
+                            ];
+
+                          if (!currentCoord) {
+                            return null;
+                          }
+
+                          const x = currentCoord.x * 230 + 10;
+                          const y = currentCoord.y * 160 + 10;
+
+                          return (
+                            <circle
+                              cx={x}
+                              cy={y}
+                              r={5}
+                              fill='#FF5722'
+                              stroke='#FFFFFF'
+                              strokeWidth={2}
+                            />
+                          );
+                        })()}
+                      </svg>
+                    </View>
+                  </View>
+                );
+              })()}
+
+            {/* Charts */}
+            {selectedLaps.length > 0 && !dataLoading && (
+              <View style={styles.chartsSection}>
+                {charts.map(chart => (
+                  <View key={chart.id} style={styles.chartContainer}>
+                    <View style={styles.chartHeader}>
+                      <Text style={styles.chartTitle}>{chart.title}</Text>
+                      {charts.length > 1 && (
+                        <TouchableOpacity
+                          style={styles.removeChartButton}
+                          onPress={() => removeChart(chart.id)}>
+                          <Text style={styles.removeChartButtonText}>✕</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    <MultiLapTimeSeriesChart
+                      laps={selectedLaps}
+                      selectedSeries={chart.selectedSeries}
+                      title={chart.title}
+                      // Shared controls
+                      externalIsPlaying={isPlaying}
+                      externalPlaybackSpeed={playbackSpeed}
+                      externalZoomLevel={zoomLevel}
+                      externalShowTrackMap={false} // Hide individual track maps
+                      onSeriesChange={newSeries =>
+                        updateChartSeries(chart.id, newSeries)
+                      }
+                      // Pre-loaded data to avoid duplicate API calls
+                      preloadedData={lapDataMap}
+                      // Shared position tracking
+                      externalCurrentPosition={currentPosition}
+                      onPositionChange={setCurrentPosition}
+                    />
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Loading indicator for charts */}
+            {selectedLaps.length > 0 && dataLoading && (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator
+                  size='large'
+                  color={RacingTheme.colors.primary}
                 />
+                <Text style={styles.loadingText}>Loading chart data...</Text>
+              </View>
+            )}
+
+            {/* Shared Legend */}
+            {selectedLaps.length > 0 && !dataLoading && (
+              <View style={styles.sharedLegendSection}>
+                <Text style={styles.legendTitle}>LEGEND</Text>
+
+                {/* Series Legend */}
+                <View style={styles.legendGroup}>
+                  <Text style={styles.legendGroupTitle}>Data Series</Text>
+                  <View style={styles.legendItems}>
+                    {Object.entries(SERIES_BASE_COLORS).map(
+                      ([seriesKey, color]) => {
+                        const seriesLabels = {
+                          brake: 'Brake',
+                          throttle: 'Throttle',
+                          rpm: 'RPM',
+                          steeringWheelAngle: 'Steering',
+                          speed: 'Speed',
+                          gear: 'Gear',
+                        };
+                        return (
+                          <View key={seriesKey} style={styles.legendItem}>
+                            <View
+                              style={[
+                                styles.legendColorBox,
+                                {backgroundColor: color},
+                              ]}
+                            />
+                            <Text style={styles.legendText}>
+                              {
+                                seriesLabels[
+                                  seriesKey as keyof typeof seriesLabels
+                                ]
+                              }
+                            </Text>
+                          </View>
+                        );
+                      },
+                    )}
+                  </View>
+                </View>
+
+                {/* Lap Legend */}
+                {selectedLaps.length > 1 && (
+                  <View style={styles.legendGroup}>
+                    <Text style={styles.legendGroupTitle}>Laps</Text>
+                    <View style={styles.legendItems}>
+                      {selectedLaps.map((lap, index) => {
+                        // Use the first series color (brake) to represent this lap's color scheme
+                        const lapColor =
+                          LAP_COLOR_SCHEMES[index]?.brake ||
+                          SERIES_BASE_COLORS.brake;
+                        return (
+                          <View key={lap.id} style={styles.legendItem}>
+                            <View
+                              style={[
+                                styles.legendColorBox,
+                                {backgroundColor: lapColor},
+                              ]}
+                            />
+                            <Text style={styles.legendText}>
+                              Lap {lap.lapNumber} {index === 0 && '(Reference)'}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+                )}
               </View>
             )}
 
@@ -583,8 +986,152 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontStyle: 'italic',
   },
-  chartSection: {
+  sharedControlsSection: {
     marginBottom: RacingTheme.spacing.lg,
+  },
+  sharedControls: {
+    backgroundColor: RacingTheme.colors.surface,
+    borderRadius: RacingTheme.borderRadius.md,
+    padding: RacingTheme.spacing.md,
+    borderWidth: 1,
+    borderColor: RacingTheme.colors.surfaceElevated,
+  },
+  controlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    marginBottom: RacingTheme.spacing.md,
+    flexWrap: 'wrap',
+    gap: RacingTheme.spacing.sm,
+  },
+  playbackGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  controlButton: {
+    backgroundColor: RacingTheme.colors.surfaceElevated,
+    paddingHorizontal: RacingTheme.spacing.md,
+    paddingVertical: RacingTheme.spacing.sm,
+    borderRadius: RacingTheme.borderRadius.sm,
+    borderWidth: 1,
+    borderColor: RacingTheme.colors.surfaceElevated,
+  },
+  controlButtonActive: {
+    backgroundColor: RacingTheme.colors.primary,
+    borderColor: RacingTheme.colors.primary,
+  },
+  controlButtonText: {
+    fontSize: RacingTheme.typography.caption,
+    fontWeight: RacingTheme.typography.medium as any,
+    color: RacingTheme.colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  playButton: {
+    backgroundColor: RacingTheme.colors.success,
+    paddingHorizontal: RacingTheme.spacing.lg,
+    paddingVertical: RacingTheme.spacing.sm,
+    borderRadius: RacingTheme.borderRadius.sm,
+    borderWidth: 1,
+    borderColor: RacingTheme.colors.success,
+  },
+  playButtonActive: {
+    backgroundColor: RacingTheme.colors.error,
+    borderColor: RacingTheme.colors.error,
+  },
+  playButtonText: {
+    fontSize: RacingTheme.typography.body,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.surface,
+  },
+  zoomGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  zoomText: {
+    fontSize: RacingTheme.typography.caption,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.primary,
+    marginHorizontal: RacingTheme.spacing.sm,
+    minWidth: 20,
+    textAlign: 'center',
+  },
+  sharedTrackMapContainer: {
+    alignItems: 'center',
+    marginBottom: RacingTheme.spacing.lg,
+  },
+  sharedTrackMap: {
+    backgroundColor: RacingTheme.colors.surface,
+    borderRadius: RacingTheme.borderRadius.md,
+    padding: RacingTheme.spacing.md,
+    borderWidth: 1,
+    borderColor: RacingTheme.colors.surfaceElevated,
+  },
+  trackMapSvg: {
+    width: 250,
+    height: 180,
+  },
+  statusGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusText: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.text,
+    fontStyle: 'italic',
+  },
+  addChartButtonContainer: {
+    alignItems: 'center',
+    marginBottom: RacingTheme.spacing.md,
+  },
+  addChartButton: {
+    backgroundColor: RacingTheme.colors.secondary,
+    paddingHorizontal: RacingTheme.spacing.xl,
+    paddingVertical: RacingTheme.spacing.md,
+    borderRadius: RacingTheme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: RacingTheme.colors.secondary,
+    minWidth: 150,
+    alignItems: 'center',
+  },
+  addChartButtonText: {
+    fontSize: RacingTheme.typography.body,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.surface,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  chartsSection: {
+    marginBottom: RacingTheme.spacing.lg,
+  },
+  chartContainer: {
+    marginBottom: RacingTheme.spacing.lg,
+  },
+  chartHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: RacingTheme.spacing.sm,
+    paddingHorizontal: RacingTheme.spacing.sm,
+  },
+  chartTitle: {
+    fontSize: RacingTheme.typography.h4,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.primary,
+    letterSpacing: 1,
+  },
+  removeChartButton: {
+    backgroundColor: RacingTheme.colors.error,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removeChartButtonText: {
+    fontSize: RacingTheme.typography.caption,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.surface,
   },
   lapListSection: {
     marginBottom: RacingTheme.spacing.lg,
@@ -691,6 +1238,56 @@ const styles = StyleSheet.create({
     fontSize: RacingTheme.typography.caption,
     color: RacingTheme.colors.primary,
     letterSpacing: 1,
+  },
+  sharedLegendSection: {
+    marginTop: RacingTheme.spacing.lg,
+    marginBottom: RacingTheme.spacing.lg,
+    backgroundColor: RacingTheme.colors.surface,
+    borderRadius: RacingTheme.borderRadius.md,
+    padding: RacingTheme.spacing.lg,
+    borderWidth: 1,
+    borderColor: RacingTheme.colors.surfaceElevated,
+  },
+  legendTitle: {
+    fontSize: RacingTheme.typography.h4,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.primary,
+    marginBottom: RacingTheme.spacing.md,
+    textAlign: 'center',
+    letterSpacing: 1,
+  },
+  legendGroup: {
+    marginBottom: RacingTheme.spacing.lg,
+  },
+  legendGroupTitle: {
+    fontSize: RacingTheme.typography.body,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.text,
+    marginBottom: RacingTheme.spacing.sm,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  legendItems: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: RacingTheme.spacing.md,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 120,
+  },
+  legendColorBox: {
+    width: 16,
+    height: 16,
+    borderRadius: 3,
+    marginRight: RacingTheme.spacing.sm,
+    borderWidth: 1,
+    borderColor: RacingTheme.colors.surfaceElevated,
+  },
+  legendText: {
+    color: RacingTheme.colors.text,
+    fontSize: RacingTheme.typography.caption,
   },
   errorText: {
     fontSize: RacingTheme.typography.h2,
