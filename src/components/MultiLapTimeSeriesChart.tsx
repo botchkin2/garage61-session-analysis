@@ -421,6 +421,13 @@ export const MultiLapTimeSeriesChart: React.FC<
     updatePosition,
   ]);
 
+  // Update visible data when reference lap data first loads (initial position = 0)
+  useEffect(() => {
+    if (referenceLapData) {
+      updateVisibleData(referenceLapData.raw, 0);
+    }
+  }, [referenceLapData, updateVisibleData]);
+
   // Update visible data when zoom level changes (initial position = 0)
   useEffect(() => {
     if (referenceLapDataRef.current) {
