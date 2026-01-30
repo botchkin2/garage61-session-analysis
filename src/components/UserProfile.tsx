@@ -16,7 +16,7 @@ import {RacingTheme} from '@/theme';
 
 const UserProfile: React.FC = React.memo(() => {
   const {user, isLoading, error, isAuthenticated} = useAuth();
-  const [fadeAnim] = useState(new Animated.Value(0));
+  const [fadeAnim] = useState(new Animated.Value(1));
 
   useEffect(() => {
     if (!isLoading && !error && isAuthenticated && user) {

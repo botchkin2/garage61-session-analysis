@@ -47,7 +47,7 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
   const [eventGroups, setEventGroups] = useState<EventGroup[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedTimeRange, setSelectedTimeRange] = useState<number>(1); // Default to 1 day (24h)
-  const [fadeAnim] = useState(new Animated.Value(0));
+  const [fadeAnim] = useState(new Animated.Value(1));
   const [dimensions, setDimensions] = useState(Dimensions.get('window'));
 
   // Group laps by event ID with racing metrics

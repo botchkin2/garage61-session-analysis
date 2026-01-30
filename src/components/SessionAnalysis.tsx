@@ -33,7 +33,7 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
 }) => {
   // All hooks must be called before any conditional logic
   const [laps, setLaps] = useState<Lap[]>([]);
-  const [fadeAnim] = useState(new Animated.Value(0));
+  const [fadeAnim] = useState(new Animated.Value(1));
   const [dimensions, setDimensions] = useState(Dimensions.get('window'));
   const [selectedLapIds, setSelectedLapIds] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<'time' | 'lapNumber'>('time');

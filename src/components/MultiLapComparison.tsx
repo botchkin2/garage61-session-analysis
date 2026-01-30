@@ -39,7 +39,7 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
 }) => {
   // All hooks must be called before any conditional logic
   const [laps, setLaps] = useState<Lap[]>([]);
-  const [fadeAnim] = useState(new Animated.Value(0));
+  const [fadeAnim] = useState(new Animated.Value(1));
   const [_dimensions, _setDimensions] = useState(Dimensions.get('window'));
   const [internalSelectedLapIds, setInternalSelectedLapIds] = useState<
     Set<string>
