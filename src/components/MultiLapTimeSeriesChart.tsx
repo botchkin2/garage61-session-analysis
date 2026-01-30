@@ -469,8 +469,8 @@ export const MultiLapTimeSeriesChart: React.FC<
     };
   }, []);
 
-  // Calculate chart dimensions
-  const chartWidth = width - 120;
+  // Calculate chart dimensions - use maximum screen width for better data visualization
+  const chartWidth = width - 40;
   const chartHeight = 250;
 
   // Current position is tracked by currentPosition (index, like TimeSeriesChart)
@@ -538,111 +538,121 @@ export const MultiLapTimeSeriesChart: React.FC<
       {/* Controls */}
       <View style={styles.compactControls}>
         <View style={styles.transportBar}>
-          <TouchableOpacity style={styles.miniButton} onPress={resetPlayback}>
-            <Text style={styles.miniText}>🔄</Text>
-          </TouchableOpacity>
-
-          <View style={styles.playbackGroup}>
-            <TouchableOpacity
-              style={styles.miniButton}
-              onPress={() => {
-                setPlaybackSpeed(Math.max(-5.0, playbackSpeed - 0.5));
-                if (!isPlaying) {
-                  startPlayback();
-                }
-              }}>
-              <Text style={styles.miniText}>⏪</Text>
+          {/* Row 1: Playback controls and map toggle */}
+          <View style={styles.controlsRow}>
+            <TouchableOpacity style={styles.miniButton} onPress={resetPlayback}>
+              <Text style={styles.miniText}>🔄</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.miniButton}
-              onPress={() => {
-                updatePosition(Math.max(0, getCurrentPosition() - 50));
-                if (!isPlaying) {
-                  startPlayback();
-                }
-              }}>
-              <Text style={styles.miniText}>⏮️</Text>
-            </TouchableOpacity>
+            <View style={styles.playbackGroup}>
+              <TouchableOpacity
+                style={styles.miniButton}
+                onPress={() => {
+                  setPlaybackSpeed(Math.max(-5.0, playbackSpeed - 0.5));
+                  if (!isPlaying) {
+                    startPlayback();
+                  }
+                }}>
+                <Text style={styles.miniText}>⏪</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.miniButton}
+                onPress={() => {
+                  updatePosition(Math.max(0, getCurrentPosition() - 50));
+                  if (!isPlaying) {
+                    startPlayback();
+                  }
+                }}>
+                <Text style={styles.miniText}>⏮️</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.playButtonMini,
+                  isPlaying && styles.playButtonActive,
+                ]}
+                onPress={() => {
+                  if (isPlaying) {
+                    stopPlayback();
+                  } else {
+                    startPlayback();
+                  }
+                }}>
+                <Text style={styles.playText}>{isPlaying ? '⏸️' : '▶️'}</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.miniButton}
+                onPress={() => {
+                  updatePosition(
+                    Math.min(
+                      (referenceLapData?.totalPoints || 0) - 1,
+                      getCurrentPosition() + 50,
+                    ),
+                  );
+                  if (!isPlaying) {
+                    startPlayback();
+                  }
+                }}>
+                <Text style={styles.miniText}>⏭️</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.miniButton}
+                onPress={() => {
+                  setPlaybackSpeed(Math.min(5.0, playbackSpeed + 0.5));
+                  if (!isPlaying) {
+                    startPlayback();
+                  }
+                }}>
+                <Text style={styles.miniText}>⏩</Text>
+              </TouchableOpacity>
+            </View>
 
             <TouchableOpacity
               style={[
-                styles.playButtonMini,
-                isPlaying && styles.playButtonActive,
+                styles.miniButton,
+                showTrackMap && styles.miniButtonActive,
               ]}
-              onPress={() => {
-                if (isPlaying) {
-                  stopPlayback();
-                } else {
-                  startPlayback();
-                }
-              }}>
-              <Text style={styles.playText}>{isPlaying ? '⏸️' : '▶️'}</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.miniButton}
-              onPress={() => {
-                updatePosition(
-                  Math.min(
-                    (referenceLapData?.totalPoints || 0) - 1,
-                    getCurrentPosition() + 50,
-                  ),
-                );
-                if (!isPlaying) {
-                  startPlayback();
-                }
-              }}>
-              <Text style={styles.miniText}>⏭️</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.miniButton}
-              onPress={() => {
-                setPlaybackSpeed(Math.min(5.0, playbackSpeed + 0.5));
-                if (!isPlaying) {
-                  startPlayback();
-                }
-              }}>
-              <Text style={styles.miniText}>⏩</Text>
+              onPress={() => setShowTrackMap(!showTrackMap)}>
+              <Text style={styles.miniText}>🗺️</Text>
             </TouchableOpacity>
           </View>
 
-          <View style={styles.statusGroup}>
-            <Text
-              style={[
-                styles.statusText,
-                playbackSpeed < 0 && styles.statusTextReverse,
-              ]}>
-              {playbackSpeed.toFixed(1)}x
-            </Text>
-            <Text style={styles.statusText}>
-              {Math.round(
-                (getCurrentPosition() / (referenceLapData?.totalPoints || 1)) *
-                  100,
-              )}
-              %
-            </Text>
-          </View>
+          {/* Row 2: Status and zoom controls */}
+          <View style={styles.controlsRow}>
+            <View style={styles.statusGroup}>
+              <Text
+                style={[
+                  styles.statusText,
+                  playbackSpeed < 0 && styles.statusTextReverse,
+                ]}>
+                {playbackSpeed.toFixed(1)}x
+              </Text>
+              <Text style={styles.statusText}>
+                {Math.round(
+                  (getCurrentPosition() /
+                    (referenceLapData?.totalPoints || 1)) *
+                    100,
+                )}
+                %
+              </Text>
+            </View>
 
-          <TouchableOpacity
-            style={[styles.miniButton, showTrackMap && styles.miniButtonActive]}
-            onPress={() => setShowTrackMap(!showTrackMap)}>
-            <Text style={styles.miniText}>🗺️</Text>
-          </TouchableOpacity>
-
-          <View style={styles.zoomGroup}>
-            <TouchableOpacity
-              style={styles.miniButton}
-              onPress={() => setZoomLevel(Math.max(1, zoomLevel - 1))}>
-              <Text style={styles.miniText}>🔍-</Text>
-            </TouchableOpacity>
-            <Text style={styles.zoomLevelText}>{zoomLevel}</Text>
-            <TouchableOpacity
-              style={styles.miniButton}
-              onPress={() => setZoomLevel(Math.min(5, zoomLevel + 1))}>
-              <Text style={styles.miniText}>🔍+</Text>
-            </TouchableOpacity>
+            <View style={styles.zoomGroup}>
+              <TouchableOpacity
+                style={styles.miniButton}
+                onPress={() => setZoomLevel(Math.max(1, zoomLevel - 1))}>
+                <Text style={styles.miniText}>🔍-</Text>
+              </TouchableOpacity>
+              <Text style={styles.zoomLevelText}>{zoomLevel}</Text>
+              <TouchableOpacity
+                style={styles.miniButton}
+                onPress={() => setZoomLevel(Math.min(5, zoomLevel + 1))}>
+                <Text style={styles.miniText}>🔍+</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </View>
@@ -955,8 +965,8 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: '#1e1e1e',
     borderRadius: 16,
-    padding: 16,
-    margin: 16,
+    padding: 0,
+    margin: 0,
     shadowColor: '#000',
     shadowOffset: {width: 0, height: 2},
     shadowOpacity: 0.3,
@@ -1003,9 +1013,15 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   transportBar: {
+    flexDirection: 'column',
+    gap: 8,
+  },
+  controlsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
   },
   playbackGroup: {
     flexDirection: 'row',
@@ -1092,9 +1108,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: '#1a1a1a',
     borderRadius: 16,
-    padding: 20,
-    marginVertical: 8,
-    width: width - 40,
+    padding: 12,
+    marginVertical: 4,
+    width: width - 8,
     height: 320,
   },
   chartArea: {
