@@ -14,7 +14,7 @@ declare const window: any;
 import {RacingCard, RacingButton, StatusBadge} from '@/components';
 import {RacingTheme} from '@/theme';
 
-const UserProfile: React.FC = () => {
+const UserProfile: React.FC = React.memo(() => {
   const {user, isLoading, error, isAuthenticated} = useAuth();
   const [fadeAnim] = useState(new Animated.Value(0));
 
@@ -23,7 +23,7 @@ const UserProfile: React.FC = () => {
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: RacingTheme.animations.normal,
-        useNativeDriver: true,
+        useNativeDriver: false, // Changed to false for web compatibility
       }).start();
     }
   }, [isLoading, error, isAuthenticated, user, fadeAnim]);
@@ -195,7 +195,7 @@ const UserProfile: React.FC = () => {
       </ScrollView>
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   mainContainer: {

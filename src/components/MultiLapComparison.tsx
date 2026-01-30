@@ -1,4 +1,4 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useMemo} from 'react';
 import {
   View,
   Text,
@@ -40,29 +40,31 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
   const [sortBy, setSortBy] = useState<'time' | 'lapNumber'>('time');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
+  // Memoize query parameters to ensure stable reference for React Query deduplication
+  const lapsQueryParams = useMemo(
+    () =>
+      sessionData
+        ? {
+            limit: 1000,
+            drivers: 'me',
+            event: sessionData.eventId,
+            unclean: true,
+            group: 'none',
+          }
+        : undefined,
+    [sessionData?.eventId],
+  );
+
   // Use cached laps query - only when sessionData is available
   const {
     data: lapsResponse,
     isLoading,
     error,
-  } = useLaps(
-    sessionData
-      ? {
-          limit: 1000,
-          drivers: 'me',
-          event: sessionData.eventId,
-          unclean: true,
-          group: 'none',
-        }
-      : undefined,
-  );
+  } = useLaps(lapsQueryParams, {enabled: !!lapsQueryParams});
 
   // Set laps and default selection when data loads
   useEffect(() => {
     if (lapsResponse?.items) {
-      console.log(
-        `MultiLapComparison: Loaded ${lapsResponse.items.length} laps for event`,
-      );
       setLaps(lapsResponse.items);
       // Use passed selectedLapIds if available, otherwise default to selecting all clean laps
       if (selectedLapIds && selectedLapIds.size > 0) {

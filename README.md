@@ -1,6 +1,15 @@
 # Lap Analysis - React Native App
 
-A React Native application built with TypeScript and best practices.
+A React Native application built with TypeScript and best practices for racing telemetry analysis.
+
+## 📚 Documentation
+
+See the [`docs/`](./docs/) directory for development guides:
+
+- [API Request Optimization](./docs/API_REQUESTS.md)
+- [React Query Best Practices](./docs/REACT_QUERY.md)
+- [Component Optimization](./docs/COMPONENT_OPTIMIZATION.md)
+- [React Native Web Guide](./docs/REACT_NATIVE_WEB.md)
 
 ## Prerequisites
 

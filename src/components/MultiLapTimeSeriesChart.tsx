@@ -58,6 +58,8 @@ interface ProcessedLapData {
   normalizedSeries: NormalizedSeriesData[];
   totalPoints: number;
   trackMap?: TrackMapData;
+  // Pre-computed mapping from lap distance % to data index for fast lookup
+  lapDistToIndexMap: Float32Array;
 }
 
 interface VisibleDataInfo {
@@ -202,27 +204,166 @@ const convertLatLongToXY = (
   };
 };
 
-// Colors for different laps
-const LAP_COLORS = [
-  '#FF4444',
-  '#44FF44',
-  '#4444FF',
-  '#FFFF44',
-  '#FF44FF',
-  '#44FFFF',
-  '#FF8844',
-  '#8844FF',
-  '#44FF88',
-  '#FF4488',
-];
+// Base colors for different data series (semantically meaningful)
+const SERIES_BASE_COLORS = {
+  brake: '#FF4444', // Red for braking
+  throttle: '#44FF44', // Green for throttle
+  rpm: '#4444FF', // Blue for RPM
+  steeringWheelAngle: '#FF8844', // Orange for steering
+  speed: '#8844FF', // Purple for speed
+  gear: '#AAAAAA', // Gray for gear
+};
+
+// Generate lap-specific color variations for each series
+const generateLapColorScheme = (maxLaps: number = 10) => {
+  const lapSchemes: Array<Record<string, string>> = [];
+
+  for (let lapIndex = 0; lapIndex < maxLaps; lapIndex++) {
+    const lapColors: Record<string, string> = {};
+
+    // Calculate saturation and lightness adjustments for this lap
+    // Lap 0: full saturation, Lap 1: slightly reduced, etc.
+    const saturationMultiplier = Math.max(0.4, 1 - lapIndex * 0.08);
+    const lightnessAdjustment = lapIndex * 3; // More conservative lightening
+
+    // Calculate hue shift factor (0 to 1, where 1 means maximum shift)
+    const hueShiftFactor = Math.min(1, lapIndex * 0.2); // Gradual shift over laps
+
+    Object.entries(SERIES_BASE_COLORS).forEach(([seriesKey, baseColor]) => {
+      // Convert hex to HSL for manipulation
+      const r = parseInt(baseColor.slice(1, 3), 16) / 255;
+      const g = parseInt(baseColor.slice(3, 5), 16) / 255;
+      const b = parseInt(baseColor.slice(5, 7), 16) / 255;
+
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      let h: number, s: number, l: number;
+
+      l = (max + min) / 2;
+
+      if (max === min) {
+        h = s = 0; // achromatic
+      } else {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+
+        switch (max) {
+          case r:
+            h = (g - b) / d + (g < b ? 6 : 0);
+            break;
+          case g:
+            h = (b - r) / d + 2;
+            break;
+          case b:
+            h = (r - g) / d + 4;
+            break;
+          default:
+            h = 0;
+        }
+        h /= 6;
+      }
+
+      // Apply lap-specific adjustments
+      s = Math.max(0.1, Math.min(1, s * saturationMultiplier));
+      l = Math.max(0.1, Math.min(0.9, l + lightnessAdjustment / 100));
+
+      // Apply hue shifting for specific series to create better color progression
+      if (seriesKey === 'brake') {
+        // Brake (red): shift toward orange (increase hue slightly)
+        h = (h + hueShiftFactor * 0.1) % 1; // Shift red toward orange
+      } else if (seriesKey === 'throttle') {
+        // Throttle (green): shift toward yellow (decrease hue slightly)
+        h = Math.max(0, h - hueShiftFactor * 0.1); // Shift green toward yellow
+      } else if (seriesKey === 'gear') {
+        // Gear (gray): shift toward warmer tones instead of just gray
+        // Shift gray toward beige/warm gray
+        h = (h + hueShiftFactor * 0.05) % 1; // Slight warm shift
+        s = Math.max(0.05, s * (1 - hueShiftFactor * 0.5)); // Reduce saturation less aggressively
+      }
+
+      // Convert back to RGB
+      const hue2rgb = (p: number, q: number, t: number) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+      };
+
+      let r2: number, g2: number, b2: number;
+
+      if (s === 0) {
+        r2 = g2 = b2 = l; // achromatic
+      } else {
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        r2 = hue2rgb(p, q, h + 1 / 3);
+        g2 = hue2rgb(p, q, h);
+        b2 = hue2rgb(p, q, h - 1 / 3);
+      }
+
+      const toHex = (c: number) => {
+        const hex = Math.round(c * 255).toString(16);
+        return hex.length === 1 ? '0' + hex : hex;
+      };
+
+      lapColors[seriesKey] = `#${toHex(r2)}${toHex(g2)}${toHex(b2)}`;
+    });
+
+    lapSchemes.push(lapColors);
+  }
+
+  return lapSchemes;
+};
+
+// Generate color schemes for up to 10 laps
+const LAP_COLOR_SCHEMES = generateLapColorScheme(10);
+
+// Binary search to find closest index for a given lap distance percentage
+const findClosestIndexByLapDist = (
+  lapDistToIndexMap: Float32Array,
+  targetLapDist: number,
+): number => {
+  let left = 0;
+  let right = lapDistToIndexMap.length - 1;
+
+  // Handle edge cases
+  if (lapDistToIndexMap.length === 0) return 0;
+  if (lapDistToIndexMap.length === 1) return 0;
+
+  // Binary search for the closest match
+  while (left <= right) {
+    const mid = Math.floor((left + right) / 2);
+    const midValue = lapDistToIndexMap[mid];
+
+    if (midValue === targetLapDist) {
+      return mid;
+    } else if (midValue < targetLapDist) {
+      left = mid + 1;
+    } else {
+      right = mid - 1;
+    }
+  }
+
+  // Return the closer of the two candidates
+  const leftDist = Math.abs(
+    lapDistToIndexMap[Math.max(0, left - 1)] - targetLapDist,
+  );
+  const rightDist = Math.abs(
+    lapDistToIndexMap[Math.min(lapDistToIndexMap.length - 1, left)] -
+      targetLapDist,
+  );
+
+  return leftDist <= rightDist ? Math.max(0, left - 1) : left;
+};
 
 // Component to handle individual lap telemetry loading
 const LapTelemetryLoader: React.FC<{
   lap: Lap;
   onLapCompleted: (lapId: string, data: ProcessedLapData | null) => void;
   lapIndex: number;
-  colorArray: string[];
-}> = ({lap, onLapCompleted, lapIndex, colorArray}) => {
+}> = ({lap, onLapCompleted, lapIndex}) => {
   const query = useTelemetry(lap.id);
   const hasCompleted = useRef(false);
 
@@ -276,7 +417,9 @@ const LapTelemetryLoader: React.FC<{
 
               return {
                 key: seriesKey,
-                color: colorArray[lapIndex % colorArray.length],
+                color:
+                  LAP_COLOR_SCHEMES[lapIndex]?.[seriesKey] ||
+                  SERIES_BASE_COLORS[seriesKey],
                 minVal,
                 maxVal,
                 range,
@@ -285,12 +428,19 @@ const LapTelemetryLoader: React.FC<{
             },
           );
 
+          // Pre-compute mapping from lap distance % to data index for fast lookup
+          const lapDistToIndexMap = new Float32Array(parsedData.length);
+          for (let i = 0; i < parsedData.length; i++) {
+            lapDistToIndexMap[i] = parsedData[i].lapDistPct;
+          }
+
           onLapCompleted(lap.id, {
             raw: parsedData,
             normalized: parsedData,
             normalizedSeries,
             totalPoints: parsedData.length,
             trackMap: convertLatLongToXY(parsedData),
+            lapDistToIndexMap,
           });
         } else {
           onLapCompleted(lap.id, null);
@@ -308,7 +458,6 @@ const LapTelemetryLoader: React.FC<{
     query.error,
     lap.id,
     lapIndex,
-    colorArray,
     onLapCompleted,
   ]);
 
@@ -660,7 +809,6 @@ export const MultiLapTimeSeriesChart: React.FC<
             lap={lap}
             onLapCompleted={handleLapCompleted}
             lapIndex={index}
-            colorArray={LAP_COLORS}
           />
         );
       })}
@@ -922,8 +1070,6 @@ export const MultiLapTimeSeriesChart: React.FC<
                   return null;
                 }
 
-                const lapColor =
-                  LAP_COLORS[laps.indexOf(lap) % LAP_COLORS.length];
                 // Check if this is the reference lap (first lap in the array)
                 const isReferenceLap =
                   laps.length > 0 &&
@@ -958,21 +1104,11 @@ export const MultiLapTimeSeriesChart: React.FC<
                       normalizedValue = series.normalizedData[dataIndex] || 0;
                     } else {
                       // For other laps, find the closest point at the same lap distance percentage
-                      // This filters the other lap's data to match the reference lap's frame
-                      let closestIdx = 0;
-                      let minDiff = Math.abs(
-                        lapData.raw[0].lapDistPct - refPoint.lapDistPct,
+                      // Use binary search for O(log n) lookup instead of O(n) linear search
+                      const closestIdx = findClosestIndexByLapDist(
+                        lapData.lapDistToIndexMap,
+                        refPoint.lapDistPct,
                       );
-
-                      for (let j = 1; j < lapData.raw.length; j++) {
-                        const diff = Math.abs(
-                          lapData.raw[j].lapDistPct - refPoint.lapDistPct,
-                        );
-                        if (diff < minDiff) {
-                          minDiff = diff;
-                          closestIdx = j;
-                        }
-                      }
 
                       dataIndex = closestIdx;
                       normalizedValue = series.normalizedData[closestIdx] || 0;
@@ -1002,7 +1138,7 @@ export const MultiLapTimeSeriesChart: React.FC<
                         style={styles.svgChart}>
                         <path
                           d={pathData}
-                          stroke={lapColor}
+                          stroke={series.color}
                           strokeWidth={2}
                           fill='none'
                           strokeLinecap='round'
@@ -1048,6 +1184,65 @@ export const MultiLapTimeSeriesChart: React.FC<
             </View>
           </View>
         </View>
+      </View>
+
+      {/* Legend */}
+      <View style={styles.legendSection}>
+        <Text style={styles.legendTitle}>LEGEND</Text>
+
+        {/* Series Legend */}
+        <View style={styles.legendGroup}>
+          <Text style={styles.legendGroupTitle}>Data Series</Text>
+          <View style={styles.legendItems}>
+            {Object.entries(SERIES_BASE_COLORS).map(([seriesKey, color]) => {
+              const seriesLabels = {
+                brake: 'Brake',
+                throttle: 'Throttle',
+                rpm: 'RPM',
+                steeringWheelAngle: 'Steering',
+                speed: 'Speed',
+                gear: 'Gear',
+              };
+              return (
+                <View key={seriesKey} style={styles.legendItem}>
+                  <View
+                    style={[styles.legendColorBox, {backgroundColor: color}]}
+                  />
+                  <Text style={styles.legendText}>
+                    {seriesLabels[seriesKey as keyof typeof seriesLabels]}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Lap Legend */}
+        {laps.length > 1 && (
+          <View style={styles.legendGroup}>
+            <Text style={styles.legendGroupTitle}>Laps</Text>
+            <View style={styles.legendItems}>
+              {laps.map((lap, index) => {
+                // Use the first series color (brake) to represent this lap's color scheme
+                const lapColor =
+                  LAP_COLOR_SCHEMES[index]?.brake || SERIES_BASE_COLORS.brake;
+                return (
+                  <View key={lap.id} style={styles.legendItem}>
+                    <View
+                      style={[
+                        styles.legendColorBox,
+                        {backgroundColor: lapColor},
+                      ]}
+                    />
+                    <Text style={styles.legendText}>
+                      Lap {lap.lapNumber} {index === 0 && '(Reference)'}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
       </View>
 
       <View style={styles.stats}>
@@ -1292,6 +1487,53 @@ const styles = StyleSheet.create({
     borderTopColor: '#333',
   },
   statsText: {
+    color: '#cccccc',
+    fontSize: 12,
+  },
+  legendSection: {
+    marginTop: 16,
+    marginBottom: 16,
+    backgroundColor: '#2a2a2a',
+    borderRadius: 8,
+    padding: 16,
+  },
+  legendTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  legendGroup: {
+    marginBottom: 16,
+  },
+  legendGroupTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#cccccc',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  legendItems: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 100,
+  },
+  legendColorBox: {
+    width: 16,
+    height: 16,
+    borderRadius: 3,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#444',
+  },
+  legendText: {
     color: '#cccccc',
     fontSize: 12,
   },

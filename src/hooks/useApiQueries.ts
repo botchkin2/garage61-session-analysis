@@ -4,7 +4,13 @@ import {apiClient} from '@/utils/api';
 // Query keys for consistent cache management
 export const queryKeys = {
   user: ['user'] as const,
-  laps: (params?: Record<string, any>) => ['laps', params] as const,
+  laps: (params?: Record<string, any>) => {
+    if (!params) return ['laps'];
+    // Create a stable query key by sorting object keys and creating a string
+    const sortedKeys = Object.keys(params).sort();
+    const keyString = sortedKeys.map(key => `${key}:${params[key]}`).join('|');
+    return ['laps', keyString];
+  },
   telemetry: (lapId: string) => ['telemetry', lapId] as const,
 };
 
@@ -13,31 +19,43 @@ export const useUser = () => {
   return useQuery({
     queryKey: queryKeys.user,
     queryFn: () => apiClient.getCurrentUser(),
-    staleTime: 30 * 60 * 1000, // 30 minutes
-    gcTime: 60 * 60 * 1000, // 1 hour
+    staleTime: 60 * 60 * 1000, // 1 hour - increased
+    gcTime: 2 * 60 * 60 * 1000, // 2 hours - increased
+    // Allow refetch on mount if no cached data, but prevent other refetches
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 };
 
-// Lap data with filters - 5 minutes default
-export const useLaps = (params?: {
-  limit?: number;
-  offset?: number;
-  age?: number;
-  drivers?: string;
-  cars?: number[];
-  tracks?: number[];
-  sessionTypes?: number[];
-  event?: string;
-  unclean?: boolean;
-  minLapTime?: number;
-  maxLapTime?: number;
-  group?: 'driver' | 'driver-car' | 'none';
-}) => {
+// Lap data with filters - aggressive caching to prevent redundant requests
+export const useLaps = (
+  params?: {
+    limit?: number;
+    offset?: number;
+    age?: number;
+    drivers?: string;
+    cars?: number[];
+    tracks?: number[];
+    sessionTypes?: number[];
+    event?: string;
+    unclean?: boolean;
+    minLapTime?: number;
+    maxLapTime?: number;
+    group?: 'driver' | 'driver-car' | 'none';
+  },
+  options?: {enabled?: boolean},
+) => {
   return useQuery({
     queryKey: queryKeys.laps(params),
     queryFn: () => apiClient.getLaps(params),
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 15 * 60 * 1000, // 15 minutes
+    staleTime: 15 * 60 * 1000, // 15 minutes - increased
+    gcTime: 60 * 60 * 1000, // 1 hour - increased
+    // Allow refetch on mount if no cached data, but prevent other refetches
+    refetchOnMount: false, // Changed to false to prevent automatic refetches
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    enabled: options?.enabled ?? !!params, // Only run if explicitly enabled
   });
 };
 

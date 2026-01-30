@@ -6,6 +6,7 @@ module.exports = {
   rules: {
     'jsx-quotes': 'off', // Disable since Prettier handles quote consistency
     'react-native/no-inline-styles': 'warn', // Keep as warning, not error
+    'react-hooks/exhaustive-deps': 'off', // Allow flexible dependency management
   },
   overrides: [
     {

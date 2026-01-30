@@ -16,23 +16,27 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
-export const AuthProvider: React.FC<AuthProviderProps> = ({children}) => {
-  const {data: user, isLoading, error, refetch} = useUser();
+export const AuthProvider: React.FC<AuthProviderProps> = React.memo(
+  ({children}) => {
+    const {data: user, isLoading, error, refetch} = useUser();
 
-  const refreshUser = async () => {
-    await refetch();
-  };
+    const refreshUser = async () => {
+      await refetch();
+    };
 
-  const value: AuthContextType = {
-    user: user || null,
-    isLoading,
-    isAuthenticated: !!user,
-    error: error?.message || null,
-    refreshUser,
-  };
+    const value: AuthContextType = {
+      user: user || null,
+      isLoading,
+      isAuthenticated: !!user,
+      error: error?.message || null,
+      refreshUser,
+    };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-};
+    return (
+      <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+    );
+  },
+);
 
 export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);

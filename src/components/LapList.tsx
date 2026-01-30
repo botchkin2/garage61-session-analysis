@@ -42,6 +42,7 @@ interface LapListProps {
 
 const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
   const [loading, setLoading] = useState(true);
+  const [queryEnabled, setQueryEnabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [eventGroups, setEventGroups] = useState<EventGroup[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -114,18 +115,29 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
     );
   }, []);
 
-  // Use cached laps query
+  // Memoize query parameters to ensure stable reference for React Query deduplication
+  const lapsQueryParams = useMemo(
+    () => ({
+      limit: 200,
+      age: selectedTimeRange,
+      drivers: 'me',
+      group: 'none',
+    }),
+    [selectedTimeRange],
+  );
+
+  // Use cached laps query - only enable after component mounts
   const {
     data: lapsResponse,
     isLoading: queryLoading,
     error: queryError,
     refetch,
-  } = useLaps({
-    limit: 200,
-    age: selectedTimeRange,
-    drivers: 'me',
-    group: 'none',
-  });
+  } = useLaps(lapsQueryParams, {enabled: queryEnabled});
+
+  // Enable query after component mounts
+  React.useEffect(() => {
+    setQueryEnabled(true);
+  }, []);
 
   // Group laps by event when data changes
   const groupedEvents = useMemo(() => {
@@ -133,15 +145,7 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
       return [];
     }
 
-    console.log(
-      'LapList: Successfully loaded',
-      lapsResponse.items.length,
-      'laps out of',
-      lapsResponse.total,
-    );
-
     const grouped = groupLapsByEvent(lapsResponse.items);
-    console.log('LapList: Grouped into', grouped.length, 'events');
     return grouped;
   }, [lapsResponse, groupLapsByEvent]);
 
@@ -170,11 +174,11 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
   };
 
   useEffect(() => {
-    // Fade in animation
+    // Fade in animation - disabled useNativeDriver for web compatibility
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: RacingTheme.animations.normal,
-      useNativeDriver: true,
+      useNativeDriver: false, // Changed to false to prevent warnings
     }).start();
   }, [fadeAnim]);
 

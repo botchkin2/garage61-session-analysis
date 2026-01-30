@@ -230,7 +230,6 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
       const CHUNK_SIZE = 1000;
       const totalLines = allLines.length;
       const parsedData: TimeSeriesData[] = [];
-      let processedLines = 0;
 
       // Parse header
       const headers = allLines[0].split(',');
@@ -308,17 +307,10 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
             });
           }
         }
-
-        processedLines += chunk.length;
-        console.log(
-          `Processed ${processedLines}/${totalLines - 1} data points...`,
-        );
       }
 
       // Sort by LapDistPct to ensure proper ordering
       parsedData.sort((a, b) => a.lapDistPct - b.lapDistPct);
-
-      console.log(`Loaded ${parsedData.length} data points from CSV`);
 
       // Pre-calculate normalized data for all series using Float32Array for memory efficiency
       const seriesKeys = [

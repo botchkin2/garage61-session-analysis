@@ -14,6 +14,12 @@ if (!API_TOKEN) {
   console.warn('GARAGE61_API_TOKEN environment variable is not set');
 }
 
+// Global request cache to survive HMR and ensure proper deduplication
+// Using window object to persist across webpack HMR reloads, which reset module-level variables
+const globalRequestCache =
+  (window as any).__apiRequestCache ||
+  ((window as any).__apiRequestCache = new Map<string, Promise<any>>());
+
 class ApiClient {
   private client: AxiosInstance;
 
@@ -43,16 +49,46 @@ class ApiClient {
     );
   }
 
+  // Deduplicate requests to prevent redundant API calls
+  private async deduplicatedRequest<T>(
+    method: string,
+    url: string,
+    config?: any,
+  ): Promise<T> {
+    const cacheKey = `${method}:${url}:${JSON.stringify(config || {})}`;
+
+    // Check if we already have a pending request for this exact call
+    if (globalRequestCache.has(cacheKey)) {
+      return globalRequestCache.get(cacheKey)!;
+    }
+
+    // Create the request
+    const requestPromise = this.client
+      .request<AxiosResponse<T>>({
+        method: method as any,
+        url,
+        ...config,
+      })
+      .then(result => {
+        // Remove from cache after completion
+        globalRequestCache.delete(cacheKey);
+        return result.data;
+      })
+      .catch(error => {
+        // Remove from cache on error
+        globalRequestCache.delete(cacheKey);
+        throw error;
+      });
+
+    // Cache the promise immediately
+    globalRequestCache.set(cacheKey, requestPromise);
+
+    return requestPromise;
+  }
+
   // Get current user information
   async getCurrentUser(): Promise<Garage61User> {
-    try {
-      const response: AxiosResponse<Garage61User> = await this.client.get(
-        '/me',
-      );
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+    return this.deduplicatedRequest<Garage61User>('GET', '/me');
   }
 
   // Get laps with filtering
@@ -70,31 +106,23 @@ class ApiClient {
     maxLapTime?: number;
     group?: 'driver' | 'driver-car' | 'none'; // API grouping option
   }): Promise<LapsResponse> {
-    try {
-      const url = '/laps';
-      const fullUrl = `${API_BASE_URL}${url}`;
-      console.log('API Client: Making request to:', fullUrl);
+    // Convert array parameters to comma-separated strings for GET requests
+    const processedParams = {
+      ...params,
+      cars: params?.cars?.join(','),
+      tracks: params?.tracks?.join(','),
+      sessionTypes: params?.sessionTypes?.join(','),
+      event: params?.event,
+    };
 
-      // Convert array parameters to comma-separated strings for GET requests
-      const processedParams = {
-        ...params,
-        cars: params?.cars?.join(','),
-        tracks: params?.tracks?.join(','),
-        sessionTypes: params?.sessionTypes?.join(','),
-        event: params?.event,
-      };
+    const queryParams = {
+      limit: 100, // Default limit
+      ...processedParams,
+    };
 
-      const response: AxiosResponse<LapsResponse> = await this.client.get(url, {
-        params: {
-          limit: 100, // Default limit
-          ...processedParams,
-        },
-      });
-      return response.data;
-    } catch (error) {
-      console.error('API Client: Request failed:', error);
-      throw error;
-    }
+    return this.deduplicatedRequest<LapsResponse>('GET', '/laps', {
+      params: queryParams,
+    });
   }
 
   // Generic GET method for future endpoints
