@@ -2,11 +2,13 @@ import React from 'react';
 import {NavigationContainer} from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
+import {TouchableOpacity, Text} from 'react-native';
 import {
   ProfileScreen,
   LapListScreen,
   SessionAnalysisScreen,
   MultiLapComparisonScreen,
+  SettingsScreen,
 } from '@/screens';
 import {RacingTheme} from '@/theme';
 import {SessionData} from '@/types';
@@ -16,6 +18,7 @@ type RootStackParamList = {
   MainTabs: undefined;
   SessionAnalysis: {sessionData: SessionData};
   MultiLapComparison: {sessionData: SessionData; selectedLapIds?: string[]};
+  Settings: undefined;
 };
 
 type MainTabParamList = {
@@ -49,10 +52,17 @@ const MainTabNavigator = () => {
       <Tab.Screen
         name='Profile'
         component={ProfileScreen}
-        options={{
+        options={({navigation}) => ({
           title: '🏁 DRIVER',
           tabBarLabel: 'Driver',
-        }}
+          headerRight: () => (
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Settings')}
+              style={{padding: 10}}>
+              <Text style={{fontSize: 20}}>⚙️</Text>
+            </TouchableOpacity>
+          ),
+        })}
       />
       <Tab.Screen
         name='Laps'
@@ -127,6 +137,14 @@ const AppNavigator = () => {
           component={MultiLapComparisonScreen}
           options={{
             title: 'Multi Lap Comparison',
+            headerBackTitle: 'Back',
+          }}
+        />
+        <Stack.Screen
+          name='Settings'
+          component={SettingsScreen}
+          options={{
+            title: 'Settings',
             headerBackTitle: 'Back',
           }}
         />

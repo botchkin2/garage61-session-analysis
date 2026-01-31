@@ -1,5 +1,7 @@
 import axios, {AxiosInstance, AxiosResponse, AxiosError} from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {Garage61User, LapsResponse, ApiError} from '@/types';
+import {API_CONFIG} from '@/config/api';
 
 // Environment variables
 // In development, use webpack proxy to avoid CORS issues
@@ -8,11 +10,6 @@ const isDevelopment = process.env.NODE_ENV === 'development';
 const API_BASE_URL = isDevelopment
   ? '/api/garage61' // Proxied through webpack dev server
   : '/api/garage61'; // Proxied through Firebase Functions
-const API_TOKEN = process.env.GARAGE61_API_TOKEN;
-
-if (!API_TOKEN) {
-  console.warn('GARAGE61_API_TOKEN environment variable is not set');
-}
 
 // Global request cache to survive HMR and ensure proper deduplication
 // Using window object to persist across webpack HMR reloads, which reset module-level variables
@@ -27,10 +24,18 @@ class ApiClient {
     this.client = axios.create({
       baseURL: API_BASE_URL,
       headers: {
-        Authorization: `Bearer ${API_TOKEN}`,
         'Content-Type': 'application/json',
       },
-      timeout: 30000, // 30 second timeout
+      timeout: API_CONFIG.TIMEOUT,
+    });
+
+    // Add request interceptor to dynamically set auth header
+    this.client.interceptors.request.use(async config => {
+      const token = await this.getStoredToken();
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
     });
 
     // Response interceptor for error handling
@@ -47,6 +52,28 @@ class ApiClient {
         return Promise.reject(apiError);
       },
     );
+  }
+
+  private async getStoredToken(): Promise<string | null> {
+    try {
+      // First try to get from AsyncStorage
+      const storedToken = await AsyncStorage.getItem(API_CONFIG.STORAGE_KEY);
+      if (storedToken) {
+        return storedToken;
+      }
+
+      // Fallback to environment variable for development
+      const envToken = process.env.GARAGE61_API_TOKEN;
+      if (envToken) {
+        return envToken;
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Error getting stored token:', error);
+      // Fallback to environment variable
+      return process.env.GARAGE61_API_TOKEN || null;
+    }
   }
 
   // Deduplicate requests to prevent redundant API calls
@@ -147,9 +174,19 @@ class ApiClient {
     });
   }
 
+  // Check if API token is configured
+  async isTokenConfigured(): Promise<boolean> {
+    const token = await this.getStoredToken();
+    return !!token;
+  }
+
   // Check if API is accessible
   async ping(): Promise<boolean> {
     try {
+      const token = await this.getStoredToken();
+      if (!token) {
+        return false;
+      }
       await this.client.get('/me');
       return true;
     } catch (error) {

@@ -69,10 +69,18 @@ const UserProfile: React.FC = React.memo(() => {
       <View style={styles.mainContainer}>
         <View style={styles.fullHeightContainer}>
           <View style={styles.centerContainer}>
-            <Text style={styles.errorText}>NOT AUTHENTICATED</Text>
+            <Text style={styles.errorText}>API TOKEN REQUIRED</Text>
             <Text style={styles.errorSubtext}>
-              Please check your GARAGE61_API_TOKEN in .env.local
+              Please configure your Garage 61 API token in Settings
             </Text>
+            <RacingButton
+              title='OPEN SETTINGS'
+              onPress={() => {
+                // This will be handled by the navigation header button
+                // For now, show instructions
+              }}
+              style={styles.retryButton}
+            />
           </View>
         </View>
       </View>

@@ -1,5 +1,6 @@
 // Export all screens from here for easier imports
 export {default as ProfileScreen} from './ProfileScreen';
+export {default as SettingsScreen} from './SettingsScreen';
 
 // Platform-specific exports
 import {Platform} from 'react-native';
