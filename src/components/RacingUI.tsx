@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ViewStyle,
+  Platform,
 } from 'react-native';
 import {RacingTheme} from '@src/theme';
 
@@ -132,24 +133,39 @@ interface LapTimeProps {
   time: number;
   isBest?: boolean;
   style?: ViewStyle;
+  onPress?: () => void;
 }
 
 export const LapTime: React.FC<LapTimeProps> = ({
   time,
   isBest = false,
   style,
+  onPress,
 }) => {
   const formatTime = (seconds: number): string => {
+    if (typeof seconds !== 'number' || isNaN(seconds)) {
+      return '--:--.---';
+    }
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = (seconds % 60).toFixed(3);
     return `${minutes}:${remainingSeconds.padStart(6, '0')}`;
   };
 
-  return (
+  const lapTimeComponent = (
     <Text style={[styles.lapTime, isBest && styles.bestLapTime, style]}>
       {formatTime(time)}
     </Text>
   );
+
+  if (onPress) {
+    return (
+      <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
+        {lapTimeComponent}
+      </TouchableOpacity>
+    );
+  }
+
+  return lapTimeComponent;
 };
 
 interface TimeRangeSelectorProps {
@@ -259,7 +275,8 @@ const styles = StyleSheet.create({
     color: RacingTheme.colors.background,
     fontSize: RacingTheme.typography.small,
     fontWeight: RacingTheme.typography.bold,
-    fontFamily: RacingTheme.typography.mono,
+    fontFamily:
+      Platform.OS === 'android' ? 'monospace' : RacingTheme.typography.mono,
     letterSpacing: 0.5,
   },
   metricCard: {
@@ -277,7 +294,8 @@ const styles = StyleSheet.create({
     fontSize: RacingTheme.typography.h2,
     fontWeight: RacingTheme.typography.bold,
     color: RacingTheme.colors.primary,
-    fontFamily: RacingTheme.typography.mono,
+    fontFamily:
+      Platform.OS === 'android' ? 'monospace' : RacingTheme.typography.mono,
   },
   metricUnit: {
     fontSize: RacingTheme.typography.body,
@@ -295,7 +313,8 @@ const styles = StyleSheet.create({
     fontSize: RacingTheme.typography.h3,
     fontWeight: RacingTheme.typography.bold,
     color: RacingTheme.colors.time,
-    fontFamily: RacingTheme.typography.mono,
+    fontFamily:
+      Platform.OS === 'android' ? 'monospace' : RacingTheme.typography.mono,
     letterSpacing: 0.5,
   },
   bestLapTime: {

@@ -61,7 +61,11 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
 
   const selectCleanLaps = () => {
     setSelectedLapIds(
-      new Set(laps.filter(lap => lap.clean).map(lap => lap.id)),
+      new Set(
+        laps
+          .filter(lap => lap.clean && !lap.pitIn && !lap.pitOut)
+          .map(lap => lap.id),
+      ),
     );
   };
 
@@ -80,6 +84,59 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
       setSortDirection('asc');
     }
   };
+
+  const getSessionTypeName = (type: number): string => {
+    switch (type) {
+      case 1:
+        return 'Practice';
+      case 2:
+        return 'Qualifying';
+      case 3:
+        return 'Race';
+      default:
+        return 'Unknown';
+    }
+  };
+
+  // Group laps by session type and session ID for restarted sessions
+  const groupedLaps = useMemo(() => {
+    const groups: Record<string, Lap[]> = {};
+
+    laps.forEach(lap => {
+      const sessionTypeName = getSessionTypeName(lap.sessionType);
+      const groupKey = `${sessionTypeName}-${lap.session}`;
+
+      if (!groups[groupKey]) {
+        groups[groupKey] = [];
+      }
+      groups[groupKey].push(lap);
+    });
+
+    // Sort groups by session type order (Practice, Qualifying, Race) and then by session ID
+    const sortedGroupKeys = Object.keys(groups).sort((a, b) => {
+      const aParts = a.split('-');
+      const bParts = b.split('-');
+
+      const sessionTypeOrder = {Practice: 1, Qualifying: 2, Race: 3};
+      const aOrder =
+        sessionTypeOrder[aParts[0] as keyof typeof sessionTypeOrder] || 99;
+      const bOrder =
+        sessionTypeOrder[bParts[0] as keyof typeof sessionTypeOrder] || 99;
+
+      if (aOrder !== bOrder) {
+        return aOrder - bOrder;
+      }
+
+      // If same session type, sort by session ID
+      return parseInt(aParts[1]) - parseInt(bParts[1]);
+    });
+
+    return sortedGroupKeys.map(key => ({
+      sessionType: key.split('-')[0],
+      sessionId: parseInt(key.split('-')[1]),
+      laps: groups[key].sort((a, b) => a.lapNumber - b.lapNumber), // Sort laps within group by lap number
+    }));
+  }, [laps]);
 
   // Get selected laps for calculations
   const selectedLaps = laps.filter(lap => selectedLapIds.has(lap.id));
@@ -238,6 +295,7 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
             event: sessionData.eventId,
             unclean: true,
             group: 'none',
+            lapTypes: '1,2,3,4',
           }
         : undefined,
     [sessionData?.eventId],
@@ -254,9 +312,13 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
   useEffect(() => {
     if (lapsResponse?.items) {
       setLaps(lapsResponse.items);
-      // Default to selecting all clean laps
+      // Default to selecting all clean laps (excluding pit laps)
       setSelectedLapIds(
-        new Set(lapsResponse.items.filter(lap => lap.clean).map(lap => lap.id)),
+        new Set(
+          lapsResponse.items
+            .filter((lap: Lap) => lap.clean && !lap.pitIn && !lap.pitOut)
+            .map((lap: Lap) => lap.id),
+        ),
       );
     }
   }, [lapsResponse]);
@@ -295,17 +357,39 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
     return `${minutes}:${remainingSeconds.padStart(6, '0')}`;
   };
 
-  const getSessionTypeName = (type: number): string => {
-    switch (type) {
-      case 1:
-        return 'Practice';
-      case 2:
-        return 'Qualifying';
-      case 3:
-        return 'Race';
-      default:
-        return 'Unknown';
+  // Get lap status badges for display
+  const getLapStatusBadges = (lap: Lap) => {
+    const badges: {text: string; style: any}[] = [];
+
+    // Clean/Off-track status
+    if (lap.clean) {
+      badges.push({
+        text: '✓ CLEAN',
+        style: styles.cleanBadge,
+      });
+    } else {
+      badges.push({
+        text: '⚠ OFF-TRACK',
+        style: styles.uncleanBadge,
+      });
     }
+
+    // Pit status
+    if (lap.pitIn) {
+      badges.push({
+        text: '↗ PIT IN',
+        style: styles.pitBadge,
+      });
+    }
+
+    if (lap.pitOut) {
+      badges.push({
+        text: '↙ PIT OUT',
+        style: styles.pitBadge,
+      });
+    }
+
+    return badges;
   };
 
   if (isLoading && !lapsResponse) {
@@ -558,205 +642,244 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
                     /* Mobile Card Layout */
                     <View style={styles.mobileLapsContainer}>
                       {(() => {
-                        // Sort laps based on current sort settings
-                        const sortedLaps = [...laps].sort((a, b) => {
-                          let comparison = 0;
+                        // Display grouped laps by session type
+                        return groupedLaps.map((group, groupIndex) => (
+                          <View key={`${group.sessionType}-${group.sessionId}`}>
+                            {/* Session Group Header */}
+                            <View style={styles.sessionGroupHeader}>
+                              <Text style={styles.sessionGroupTitle}>
+                                {group.sessionType}
+                                {groupedLaps.length > 1 &&
+                                  ` - Session ${group.sessionId}`}
+                              </Text>
+                              <Text style={styles.sessionGroupCount}>
+                                ({group.laps.length} laps)
+                              </Text>
+                            </View>
 
-                          if (sortBy === 'time') {
-                            comparison = a.lapTime - b.lapTime;
-                          } else if (sortBy === 'lapNumber') {
-                            comparison = a.lapNumber - b.lapNumber;
-                          }
+                            {/* Sort laps within group based on current sort settings */}
+                            {(() => {
+                              const sortedLaps = [...group.laps].sort(
+                                (a, b) => {
+                                  let comparison = 0;
 
-                          return sortDirection === 'asc'
-                            ? comparison
-                            : -comparison;
-                        });
+                                  if (sortBy === 'time') {
+                                    comparison = a.lapTime - b.lapTime;
+                                  } else if (sortBy === 'lapNumber') {
+                                    comparison = a.lapNumber - b.lapNumber;
+                                  }
 
-                        return sortedLaps.map((lap, index) => {
-                          const isSelected = selectedLapIds.has(lap.id);
-                          const isExpanded = expandedLaps.has(lap.id);
-                          const lapDelta =
-                            optimalLapTime > 0
-                              ? lap.lapTime - optimalLapTime
-                              : 0;
-                          return (
-                            <View key={lap.id}>
-                              <TouchableOpacity
-                                onPress={() => toggleLapSelection(lap.id)}
-                                activeOpacity={0.7}>
-                                <RacingCard
-                                  style={
-                                    isSelected
-                                      ? {
-                                          ...styles.mobileLapCard,
-                                          ...styles.mobileLapCardSelected,
-                                        }
-                                      : styles.mobileLapCard
-                                  }>
-                                  <View style={styles.mobileLapHeader}>
-                                    <View
-                                      style={[
-                                        styles.mobileLapRank,
-                                        isSelected &&
-                                          styles.mobileLapRankSelected,
-                                      ]}>
-                                      <Text
-                                        style={[
-                                          styles.mobileLapRankText,
-                                          isSelected &&
-                                            styles.mobileLapRankTextSelected,
-                                        ]}>
-                                        #{index + 1}
-                                      </Text>
-                                    </View>
-                                    <View style={styles.mobileLapStatus}>
-                                      {lap.clean ? (
-                                        <Text
-                                          style={[
-                                            styles.mobileStatusBadge,
-                                            styles.mobileCleanBadge,
-                                          ]}>
-                                          ✓ CLEAN
-                                        </Text>
-                                      ) : (
-                                        <Text
-                                          style={[
-                                            styles.mobileStatusBadge,
-                                            styles.mobileUncleanBadge,
-                                          ]}>
-                                          ⚠ OFF-TRACK
-                                        </Text>
-                                      )}
-                                    </View>
-                                  </View>
+                                  return sortDirection === 'asc'
+                                    ? comparison
+                                    : -comparison;
+                                },
+                              );
 
-                                  <View style={styles.mobileLapDetails}>
-                                    <View style={styles.mobileLapDetail}>
-                                      <Text style={styles.mobileLapDetailLabel}>
-                                        LAP NUMBER
-                                      </Text>
-                                      <Text style={styles.mobileLapDetailValue}>
-                                        {lap.lapNumber}
-                                      </Text>
-                                    </View>
-                                    <View style={styles.mobileLapDetail}>
-                                      <View style={styles.mobileLapTimeHeader}>
-                                        <Text
-                                          style={styles.mobileLapDetailLabel}>
-                                          LAP TIME
-                                        </Text>
-                                        <TouchableOpacity
-                                          style={styles.mobileLapTimeExpand}
-                                          onPress={() =>
-                                            toggleLapExpansion(lap.id)
-                                          }>
-                                          <Text
+                              return sortedLaps.map((lap, index) => {
+                                const isSelected = selectedLapIds.has(lap.id);
+                                const isExpanded = expandedLaps.has(lap.id);
+                                const lapDelta =
+                                  optimalLapTime > 0
+                                    ? lap.lapTime - optimalLapTime
+                                    : 0;
+                                return (
+                                  <View key={lap.id}>
+                                    <TouchableOpacity
+                                      onPress={() => toggleLapSelection(lap.id)}
+                                      activeOpacity={0.7}>
+                                      <RacingCard
+                                        style={
+                                          isSelected
+                                            ? {
+                                                ...styles.mobileLapCard,
+                                                ...styles.mobileLapCardSelected,
+                                              }
+                                            : styles.mobileLapCard
+                                        }>
+                                        <View style={styles.mobileLapHeader}>
+                                          <View
                                             style={[
-                                              styles.mobileLapTimeExpandIcon,
-                                              isExpanded &&
-                                                styles.mobileLapTimeExpandIconActive,
+                                              styles.mobileLapRank,
+                                              isSelected &&
+                                                styles.mobileLapRankSelected,
                                             ]}>
-                                            {isExpanded ? '▼' : '▶'}
-                                          </Text>
-                                        </TouchableOpacity>
-                                      </View>
-                                      <View style={styles.mobileLapTimeRow}>
-                                        <LapTime
-                                          time={lap.lapTime}
-                                          isBest={index === 0}
-                                        />
-                                        {optimalLapTime > 0 && (
-                                          <Text
-                                            style={[
-                                              styles.mobileLapDelta,
-                                              {color: getDeltaColor(lapDelta)},
-                                            ]}>
-                                            {formatLapDelta(lapDelta)}
-                                          </Text>
-                                        )}
-                                      </View>
-                                    </View>
-                                  </View>
-                                </RacingCard>
-                              </TouchableOpacity>
+                                            <Text
+                                              style={[
+                                                styles.mobileLapRankText,
+                                                isSelected &&
+                                                  styles.mobileLapRankTextSelected,
+                                              ]}>
+                                              #{index + 1}
+                                            </Text>
+                                          </View>
+                                          <View style={styles.mobileLapStatus}>
+                                            {getLapStatusBadges(lap).map(
+                                              (badge, badgeIndex) => (
+                                                <Text
+                                                  key={badgeIndex}
+                                                  style={[
+                                                    styles.mobileStatusBadge,
+                                                    badge.style,
+                                                  ]}>
+                                                  {badge.text}
+                                                </Text>
+                                              ),
+                                            )}
+                                          </View>
+                                        </View>
 
-                              {/* Expanded Sector Details */}
-                              {isExpanded && (
-                                <RacingCard style={styles.mobileExpandedCard}>
-                                  <Text style={styles.mobileExpandedTitle}>
-                                    SECTOR BREAKDOWN
-                                  </Text>
-                                  {lap.sectors &&
-                                  Array.isArray(lap.sectors) &&
-                                  lap.sectors.length > 0 ? (
-                                    <View style={styles.mobileSectorBreakdown}>
-                                      {lap.sectors.map(
-                                        (sector: any, sectorIndex: number) => {
-                                          if (
-                                            !sector ||
-                                            typeof sector.sectorTime !==
-                                              'number' ||
-                                            sector.incomplete
-                                          ) {
-                                            return null;
-                                          }
-
-                                          const sectorNum = sectorIndex; // Use array index as sector number
-                                          const optimalSector =
-                                            optimalSectors.find(
-                                              s => s.sector === sectorNum,
-                                            );
-                                          const sectorDelta = optimalSector
-                                            ? sector.sectorTime -
-                                              optimalSector.time
-                                            : 0;
-
-                                          return (
-                                            <View
-                                              key={sectorNum}
-                                              style={styles.mobileSectorRow}>
+                                        <View style={styles.mobileLapDetails}>
+                                          <View style={styles.mobileLapDetail}>
+                                            <Text
+                                              style={
+                                                styles.mobileLapDetailLabel
+                                              }>
+                                              LAP NUMBER
+                                            </Text>
+                                            <Text
+                                              style={
+                                                styles.mobileLapDetailValue
+                                              }>
+                                              {lap.lapNumber}
+                                            </Text>
+                                          </View>
+                                          <View style={styles.mobileLapDetail}>
+                                            <Text
+                                              style={
+                                                styles.mobileLapDetailLabel
+                                              }>
+                                              LAP TIME
+                                            </Text>
+                                            <TouchableOpacity
+                                              style={styles.mobileLapTimeRow}
+                                              onPress={() =>
+                                                toggleLapExpansion(lap.id)
+                                              }
+                                              activeOpacity={0.7}>
                                               <Text
-                                                style={
-                                                  styles.mobileSectorLabel
-                                                }>
-                                                S{sectorNum + 1}
+                                                style={[
+                                                  styles.mobileLapTimeExpandIcon,
+                                                  isExpanded &&
+                                                    styles.mobileLapTimeExpandIconActive,
+                                                ]}>
+                                                {isExpanded ? '▼' : '▶'}
                                               </Text>
-                                              <Text
-                                                style={styles.mobileSectorTime}>
-                                                {formatLapTime(
-                                                  sector.sectorTime,
-                                                )}
-                                              </Text>
-                                              {optimalSector && (
+                                              <LapTime
+                                                time={lap.lapTime}
+                                                isBest={index === 0}
+                                              />
+                                              {optimalLapTime > 0 && (
                                                 <Text
                                                   style={[
-                                                    styles.mobileSectorDelta,
+                                                    styles.mobileLapDelta,
                                                     {
                                                       color:
-                                                        getDeltaColor(
-                                                          sectorDelta,
-                                                        ),
+                                                        getDeltaColor(lapDelta),
                                                     },
                                                   ]}>
-                                                  {formatLapDelta(sectorDelta)}
+                                                  {formatLapDelta(lapDelta)}
                                                 </Text>
                                               )}
-                                            </View>
-                                          );
-                                        },
-                                      )}
-                                    </View>
-                                  ) : (
-                                    <Text style={styles.mobileNoData}>
-                                      No sector data available
-                                    </Text>
-                                  )}
-                                </RacingCard>
-                              )}
-                            </View>
-                          );
-                        });
+                                            </TouchableOpacity>
+                                          </View>
+                                        </View>
+                                      </RacingCard>
+                                    </TouchableOpacity>
+
+                                    {/* Expanded Sector Details */}
+                                    {isExpanded && (
+                                      <RacingCard
+                                        style={styles.mobileExpandedCard}>
+                                        <Text
+                                          style={styles.mobileExpandedTitle}>
+                                          SECTOR BREAKDOWN
+                                        </Text>
+                                        {lap.sectors &&
+                                        Array.isArray(lap.sectors) &&
+                                        lap.sectors.length > 0 ? (
+                                          <View
+                                            style={
+                                              styles.mobileSectorBreakdown
+                                            }>
+                                            {lap.sectors.map(
+                                              (
+                                                sector: any,
+                                                sectorIndex: number,
+                                              ) => {
+                                                if (
+                                                  !sector ||
+                                                  typeof sector.sectorTime !==
+                                                    'number' ||
+                                                  sector.incomplete
+                                                ) {
+                                                  return null;
+                                                }
+
+                                                const sectorNum = sectorIndex; // Use array index as sector number
+                                                const optimalSector =
+                                                  optimalSectors.find(
+                                                    s => s.sector === sectorNum,
+                                                  );
+                                                const sectorDelta =
+                                                  optimalSector
+                                                    ? sector.sectorTime -
+                                                      optimalSector.time
+                                                    : 0;
+
+                                                return (
+                                                  <View
+                                                    key={sectorNum}
+                                                    style={
+                                                      styles.mobileSectorRow
+                                                    }>
+                                                    <Text
+                                                      style={
+                                                        styles.mobileSectorLabel
+                                                      }>
+                                                      S{sectorNum + 1}
+                                                    </Text>
+                                                    <Text
+                                                      style={
+                                                        styles.mobileSectorTime
+                                                      }>
+                                                      {formatLapTime(
+                                                        sector.sectorTime,
+                                                      )}
+                                                    </Text>
+                                                    {optimalSector && (
+                                                      <Text
+                                                        style={[
+                                                          styles.mobileSectorDelta,
+                                                          {
+                                                            color:
+                                                              getDeltaColor(
+                                                                sectorDelta,
+                                                              ),
+                                                          },
+                                                        ]}>
+                                                        {formatLapDelta(
+                                                          sectorDelta,
+                                                        )}
+                                                      </Text>
+                                                    )}
+                                                  </View>
+                                                );
+                                              },
+                                            )}
+                                          </View>
+                                        ) : (
+                                          <Text style={styles.mobileNoData}>
+                                            No sector data available
+                                          </Text>
+                                        )}
+                                      </RacingCard>
+                                    )}
+                                  </View>
+                                );
+                              });
+                            })()}
+                          </View>
+                        ));
                       })()}
                     </View>
                   ) : (
@@ -791,7 +914,6 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
                               (sortDirection === 'asc' ? '↑' : '↓')}
                           </Text>
                         </TouchableOpacity>
-                        <Text style={styles.headerCell}>DELTA</Text>
                         <Text style={styles.headerCell}>STATUS</Text>
                       </View>
 
@@ -799,209 +921,227 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
 
                       {/* Comparison Table Rows */}
                       {(() => {
-                        // Sort laps based on current sort settings
-                        const sortedLaps = [...laps].sort((a, b) => {
-                          let comparison = 0;
+                        // Display grouped laps by session type
+                        return groupedLaps.map((group, groupIndex) => (
+                          <View key={`${group.sessionType}-${group.sessionId}`}>
+                            {/* Session Group Header in Table */}
+                            <View style={styles.tableGroupHeader}>
+                              <Text style={styles.tableGroupTitle}>
+                                {group.sessionType}
+                                {groupedLaps.length > 1 &&
+                                  ` - Session ${group.sessionId}`}
+                              </Text>
+                              <Text style={styles.tableGroupCount}>
+                                ({group.laps.length} laps)
+                              </Text>
+                            </View>
 
-                          if (sortBy === 'time') {
-                            comparison = a.lapTime - b.lapTime;
-                          } else if (sortBy === 'lapNumber') {
-                            comparison = a.lapNumber - b.lapNumber;
-                          }
+                            {/* Sort laps within group based on current sort settings */}
+                            {(() => {
+                              const sortedLaps = [...group.laps].sort(
+                                (a, b) => {
+                                  let comparison = 0;
 
-                          return sortDirection === 'asc'
-                            ? comparison
-                            : -comparison;
-                        });
+                                  if (sortBy === 'time') {
+                                    comparison = a.lapTime - b.lapTime;
+                                  } else if (sortBy === 'lapNumber') {
+                                    comparison = a.lapNumber - b.lapNumber;
+                                  }
 
-                        return sortedLaps.map((lap, index) => {
-                          const isSelected = selectedLapIds.has(lap.id);
-                          const isExpanded = expandedLaps.has(lap.id);
-                          const lapDelta =
-                            optimalLapTime > 0
-                              ? lap.lapTime - optimalLapTime
-                              : 0;
-                          return (
-                            <View key={lap.id}>
-                              <View
-                                style={
-                                  isSelected
-                                    ? {
-                                        ...styles.tableRow,
-                                        ...styles.tableRowSelected,
-                                      }
-                                    : styles.tableRow
-                                }>
-                                <TouchableOpacity
-                                  style={styles.cell}
-                                  onPress={() => toggleLapSelection(lap.id)}
-                                  activeOpacity={0.7}>
-                                  <Text
-                                    style={[
-                                      styles.cell,
-                                      isSelected && styles.cellSelected,
-                                    ]}>
-                                    #{index + 1}
-                                  </Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={[
-                                    styles.tableRowContent,
-                                    isExpanded &&
-                                      styles.tableRowContentExpanded,
-                                  ]}
-                                  onPress={() => toggleLapExpansion(lap.id)}
-                                  activeOpacity={0.7}>
-                                  <Text
-                                    style={[
-                                      styles.cell,
-                                      isSelected && styles.cellSelected,
-                                    ]}>
-                                    {lap.lapNumber}
-                                  </Text>
-                                  <Text
-                                    style={[
-                                      styles.cell,
-                                      isSelected && styles.cellSelected,
-                                    ]}>
-                                    <LapTime
-                                      time={lap.lapTime}
-                                      isBest={index === 0}
-                                    />
-                                  </Text>
-                                  <Text
-                                    style={[
-                                      styles.cellDelta,
-                                      isSelected && styles.cellSelected,
-                                      {color: getDeltaColor(lapDelta)},
-                                    ]}>
-                                    {optimalLapTime > 0
-                                      ? formatLapDelta(lapDelta)
-                                      : '--'}
-                                  </Text>
-                                  <View style={styles.cell}>
-                                    {lap.clean ? (
-                                      <Text
-                                        style={[
-                                          styles.statusBadge,
-                                          styles.cleanBadge,
-                                        ]}>
-                                        ✓ CLEAN
-                                      </Text>
-                                    ) : (
-                                      <Text
-                                        style={[
-                                          styles.statusBadge,
-                                          styles.uncleanBadge,
-                                        ]}>
-                                        ⚠ OFF-TRACK
-                                      </Text>
-                                    )}
-                                  </View>
-                                  <View style={styles.expandCell}>
-                                    <Text
-                                      style={[
-                                        styles.expandIcon,
-                                        isExpanded && styles.expandIconExpanded,
-                                      ]}>
-                                      {isExpanded ? '▼' : '▶'}
-                                    </Text>
-                                  </View>
-                                </TouchableOpacity>
-                              </View>
+                                  return sortDirection === 'asc'
+                                    ? comparison
+                                    : -comparison;
+                                },
+                              );
 
-                              {/* Expanded Sector Details for Desktop */}
-                              {isExpanded && (
-                                <View style={styles.expandedSectorRow}>
-                                  <RacingDivider />
-                                  <View style={styles.expandedSectorContent}>
-                                    <Text style={styles.expandedSectorTitle}>
-                                      SECTOR BREAKDOWN
-                                    </Text>
-                                    {lap.sectors &&
-                                    Array.isArray(lap.sectors) &&
-                                    lap.sectors.length > 0 ? (
-                                      <View style={styles.expandedSectorGrid}>
-                                        {lap.sectors.map(
-                                          (
-                                            sector: any,
-                                            sectorIndex: number,
-                                          ) => {
-                                            if (
-                                              !sector ||
-                                              typeof sector.sectorTime !==
-                                                'number' ||
-                                              sector.incomplete
-                                            ) {
-                                              return null;
+                              return sortedLaps.map((lap, index) => {
+                                const isSelected = selectedLapIds.has(lap.id);
+                                const isExpanded = expandedLaps.has(lap.id);
+                                const lapDelta =
+                                  optimalLapTime > 0
+                                    ? lap.lapTime - optimalLapTime
+                                    : 0;
+                                return (
+                                  <View key={lap.id}>
+                                    <View
+                                      style={
+                                        isSelected
+                                          ? {
+                                              ...styles.tableRow,
+                                              ...styles.tableRowSelected,
                                             }
-
-                                            const sectorNum = sectorIndex; // Use array index as sector number
-                                            const optimalSector =
-                                              optimalSectors.find(
-                                                s => s.sector === sectorNum,
-                                              );
-                                            const sectorDelta = optimalSector
-                                              ? sector.sectorTime -
-                                                optimalSector.time
-                                              : 0;
-
-                                            return (
-                                              <View
-                                                key={sectorNum}
-                                                style={
-                                                  styles.expandedSectorItem
-                                                }>
-                                                <Text
-                                                  style={
-                                                    styles.expandedSectorLabel
-                                                  }>
-                                                  S{sectorNum + 1}
-                                                </Text>
-                                                <Text
-                                                  style={
-                                                    styles.expandedSectorTime
-                                                  }>
-                                                  {formatLapTime(
-                                                    sector.sectorTime,
-                                                  )}
-                                                </Text>
-                                                {optimalSector && (
-                                                  <Text
-                                                    style={[
-                                                      styles.expandedSectorDelta,
-                                                      {
-                                                        color:
-                                                          getDeltaColor(
-                                                            sectorDelta,
-                                                          ),
-                                                      },
-                                                    ]}>
-                                                    {formatLapDelta(
-                                                      sectorDelta,
-                                                    )}
-                                                  </Text>
-                                                )}
-                                              </View>
-                                            );
-                                          },
+                                          : styles.tableRow
+                                      }>
+                                      <TouchableOpacity
+                                        style={styles.cell}
+                                        onPress={() =>
+                                          toggleLapSelection(lap.id)
+                                        }
+                                        activeOpacity={0.7}>
+                                        <Text
+                                          style={[
+                                            styles.cell,
+                                            isSelected && styles.cellSelected,
+                                          ]}>
+                                          #{index + 1}
+                                        </Text>
+                                      </TouchableOpacity>
+                                      <Text
+                                        style={[
+                                          styles.cell,
+                                          isSelected && styles.cellSelected,
+                                        ]}>
+                                        {lap.lapNumber}
+                                      </Text>
+                                      <TouchableOpacity
+                                        style={[
+                                          styles.tableTimeCell,
+                                          isExpanded &&
+                                            styles.tableTimeCellExpanded,
+                                        ]}
+                                        onPress={() =>
+                                          toggleLapExpansion(lap.id)
+                                        }
+                                        activeOpacity={0.7}>
+                                        <LapTime
+                                          time={lap.lapTime}
+                                          isBest={index === 0}
+                                        />
+                                        {optimalLapTime > 0 && (
+                                          <Text
+                                            style={[
+                                              styles.cellDelta,
+                                              isSelected && styles.cellSelected,
+                                              {color: getDeltaColor(lapDelta)},
+                                            ]}>
+                                            {formatLapDelta(lapDelta)}
+                                          </Text>
+                                        )}
+                                        <Text
+                                          style={[
+                                            styles.expandIcon,
+                                            isExpanded &&
+                                              styles.expandIconExpanded,
+                                          ]}>
+                                          {isExpanded ? '▼' : '▶'}
+                                        </Text>
+                                      </TouchableOpacity>
+                                      <View style={styles.cell}>
+                                        {getLapStatusBadges(lap).map(
+                                          (badge, badgeIndex) => (
+                                            <Text
+                                              key={badgeIndex}
+                                              style={[
+                                                styles.statusBadge,
+                                                badge.style,
+                                              ]}>
+                                              {badge.text}
+                                            </Text>
+                                          ),
                                         )}
                                       </View>
-                                    ) : (
-                                      <Text style={styles.expandedNoData}>
-                                        No sector data available
-                                      </Text>
+                                    </View>
+
+                                    {/* Expanded Sector Details for Desktop */}
+                                    {isExpanded && (
+                                      <View style={styles.expandedSectorRow}>
+                                        <RacingDivider />
+                                        <View
+                                          style={styles.expandedSectorContent}>
+                                          <Text
+                                            style={styles.expandedSectorTitle}>
+                                            SECTOR BREAKDOWN
+                                          </Text>
+                                          {lap.sectors &&
+                                          Array.isArray(lap.sectors) &&
+                                          lap.sectors.length > 0 ? (
+                                            <View
+                                              style={styles.expandedSectorGrid}>
+                                              {lap.sectors.map(
+                                                (
+                                                  sector: any,
+                                                  sectorIndex: number,
+                                                ) => {
+                                                  if (
+                                                    !sector ||
+                                                    typeof sector.sectorTime !==
+                                                      'number' ||
+                                                    sector.incomplete
+                                                  ) {
+                                                    return null;
+                                                  }
+
+                                                  const sectorNum = sectorIndex; // Use array index as sector number
+                                                  const optimalSector =
+                                                    optimalSectors.find(
+                                                      s =>
+                                                        s.sector === sectorNum,
+                                                    );
+                                                  const sectorDelta =
+                                                    optimalSector
+                                                      ? sector.sectorTime -
+                                                        optimalSector.time
+                                                      : 0;
+
+                                                  return (
+                                                    <View
+                                                      key={sectorNum}
+                                                      style={
+                                                        styles.expandedSectorItem
+                                                      }>
+                                                      <Text
+                                                        style={
+                                                          styles.expandedSectorLabel
+                                                        }>
+                                                        S{sectorNum + 1}
+                                                      </Text>
+                                                      <Text
+                                                        style={
+                                                          styles.expandedSectorTime
+                                                        }>
+                                                        {formatLapTime(
+                                                          sector.sectorTime,
+                                                        )}
+                                                      </Text>
+                                                      {optimalSector && (
+                                                        <Text
+                                                          style={[
+                                                            styles.expandedSectorDelta,
+                                                            {
+                                                              color:
+                                                                getDeltaColor(
+                                                                  sectorDelta,
+                                                                ),
+                                                            },
+                                                          ]}>
+                                                          {formatLapDelta(
+                                                            sectorDelta,
+                                                          )}
+                                                        </Text>
+                                                      )}
+                                                    </View>
+                                                  );
+                                                },
+                                              )}
+                                            </View>
+                                          ) : (
+                                            <Text style={styles.expandedNoData}>
+                                              No sector data available
+                                            </Text>
+                                          )}
+                                        </View>
+                                      </View>
+                                    )}
+
+                                    {index < sortedLaps.length - 1 && (
+                                      <RacingDivider />
                                     )}
                                   </View>
-                                </View>
-                              )}
-
-                              {index < sortedLaps.length - 1 && (
-                                <RacingDivider />
-                              )}
-                            </View>
-                          );
-                        });
+                                );
+                              });
+                            })()}
+                          </View>
+                        ));
                       })()}
                     </RacingCard>
                   )}
@@ -1317,6 +1457,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: RacingTheme.spacing.xs,
     paddingVertical: RacingTheme.spacing.xs,
     borderRadius: RacingTheme.borderRadius.sm,
+    marginBottom: RacingTheme.spacing.xs,
   },
   cleanBadge: {
     backgroundColor: RacingTheme.colors.success,
@@ -1324,6 +1465,10 @@ const styles = StyleSheet.create({
   },
   uncleanBadge: {
     backgroundColor: RacingTheme.colors.warning,
+    color: RacingTheme.colors.surface,
+  },
+  pitBadge: {
+    backgroundColor: RacingTheme.colors.secondary,
     color: RacingTheme.colors.surface,
   },
   loadingText: {
@@ -1383,6 +1528,7 @@ const styles = StyleSheet.create({
   },
   mobileLapStatus: {
     alignItems: 'flex-end',
+    gap: RacingTheme.spacing.xs,
   },
   mobileStatusBadge: {
     fontSize: RacingTheme.typography.caption,
@@ -1391,6 +1537,7 @@ const styles = StyleSheet.create({
     paddingVertical: RacingTheme.spacing.xs,
     borderRadius: RacingTheme.borderRadius.sm,
     textAlign: 'center',
+    marginBottom: RacingTheme.spacing.xs,
   },
   mobileCleanBadge: {
     backgroundColor: RacingTheme.colors.success,
@@ -1405,7 +1552,7 @@ const styles = StyleSheet.create({
   },
   mobileLapDetail: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     alignItems: 'center',
   },
   mobileLapDetailLabel: {
@@ -1425,8 +1572,8 @@ const styles = StyleSheet.create({
   mobileLapTimeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    flex: 1,
+    justifyContent: 'flex-start',
+    alignSelf: 'flex-start',
   },
   mobileLapDelta: {
     fontSize: RacingTheme.typography.caption,
@@ -1448,6 +1595,7 @@ const styles = StyleSheet.create({
     fontSize: RacingTheme.typography.body,
     fontWeight: RacingTheme.typography.bold as any,
     color: RacingTheme.colors.primary,
+    marginRight: RacingTheme.spacing.sm,
   },
   mobileLapTimeExpandIconActive: {
     color: RacingTheme.colors.secondary,
@@ -1582,14 +1730,6 @@ const styles = StyleSheet.create({
   tableRowSelected: {
     backgroundColor: RacingTheme.colors.surfaceElevated,
   },
-  tableRowContent: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  tableRowContentExpanded: {
-    backgroundColor: RacingTheme.colors.surface,
-  },
   cellSelected: {
     color: RacingTheme.colors.secondary,
     fontWeight: RacingTheme.typography.bold as any,
@@ -1716,6 +1856,18 @@ const styles = StyleSheet.create({
   },
   expandIconExpanded: {
     color: RacingTheme.colors.secondary,
+  },
+  tableTimeCell: {
+    flex: 2, // Give more space than regular cells
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingHorizontal: RacingTheme.spacing.sm,
+    paddingVertical: RacingTheme.spacing.xs,
+    gap: RacingTheme.spacing.sm, // Add gap between elements
+  },
+  tableTimeCellExpanded: {
+    backgroundColor: RacingTheme.colors.surfaceElevated,
   },
   expandedSectorRow: {
     backgroundColor: RacingTheme.colors.surface,
@@ -1958,6 +2110,55 @@ const styles = StyleSheet.create({
   },
   compareButton: {
     backgroundColor: RacingTheme.colors.secondary,
+  },
+  // Session Group Headers
+  sessionGroupHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: RacingTheme.colors.surface,
+    paddingHorizontal: RacingTheme.spacing.md,
+    paddingVertical: RacingTheme.spacing.sm,
+    marginTop: RacingTheme.spacing.md,
+    marginBottom: RacingTheme.spacing.sm,
+    borderRadius: RacingTheme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: RacingTheme.colors.surfaceElevated,
+  },
+  sessionGroupTitle: {
+    fontSize: RacingTheme.typography.h4,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.primary,
+    letterSpacing: 0.5,
+  },
+  sessionGroupCount: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.textSecondary,
+    fontStyle: 'italic',
+  },
+  // Desktop Table Group Headers
+  tableGroupHeader: {
+    backgroundColor: RacingTheme.colors.surface,
+    paddingHorizontal: RacingTheme.spacing.md,
+    paddingVertical: RacingTheme.spacing.sm,
+    marginTop: RacingTheme.spacing.sm,
+    marginBottom: RacingTheme.spacing.xs,
+    borderRadius: RacingTheme.borderRadius.sm,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  tableGroupTitle: {
+    fontSize: RacingTheme.typography.small,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  tableGroupCount: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.textSecondary,
+    fontStyle: 'italic',
   },
 });
 

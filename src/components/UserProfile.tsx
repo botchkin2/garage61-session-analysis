@@ -6,6 +6,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Animated,
+  Platform,
 } from 'react-native';
 import {useAuth} from '@src/utils/authContext';
 import {RacingCard, RacingButton, StatusBadge} from './RacingUI';
@@ -257,7 +258,8 @@ const styles = StyleSheet.create({
     fontSize: RacingTheme.typography.h1,
     fontWeight: RacingTheme.typography.bold as any,
     color: RacingTheme.colors.background,
-    fontFamily: RacingTheme.typography.mono,
+    fontFamily:
+      Platform.OS === 'android' ? 'monospace' : RacingTheme.typography.mono,
   },
   driverInfo: {
     flex: 1,
@@ -277,7 +279,8 @@ const styles = StyleSheet.create({
   driverId: {
     fontSize: RacingTheme.typography.caption,
     color: RacingTheme.colors.textTertiary,
-    fontFamily: RacingTheme.typography.mono,
+    fontFamily:
+      Platform.OS === 'android' ? 'monospace' : RacingTheme.typography.mono,
   },
   subscriptionCard: {
     marginBottom: RacingTheme.spacing.md,
@@ -339,7 +342,8 @@ const styles = StyleSheet.create({
     fontSize: RacingTheme.typography.small,
     color: RacingTheme.colors.primary,
     fontWeight: RacingTheme.typography.medium as any,
-    fontFamily: RacingTheme.typography.mono,
+    fontFamily:
+      Platform.OS === 'android' ? 'monospace' : RacingTheme.typography.mono,
   },
   teamRow: {
     flexDirection: 'row',

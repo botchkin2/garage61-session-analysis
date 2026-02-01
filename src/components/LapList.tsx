@@ -1029,7 +1029,8 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: RacingTheme.typography.caption,
     color: RacingTheme.colors.textTertiary,
-    fontFamily: RacingTheme.typography.mono,
+    fontFamily:
+      Platform.OS === 'android' ? 'monospace' : RacingTheme.typography.mono,
   },
   lapTimeCell: {
     flex: 2,
