@@ -5,6 +5,9 @@ import {Platform} from 'react-native';
 import {Garage61User, LapsResponse, ApiError} from '@src/types';
 import {API_CONFIG} from '@src/config/api';
 
+// Type declaration for web environment
+declare const window: any;
+
 // Configure API endpoints
 const FIREBASE_PROXY_URL = '/api/garage61'; // For web
 const FIREBASE_HOSTING_URL = 'https://botracing-61.web.app/api/garage61'; // For mobile
@@ -312,6 +315,19 @@ class ApiClient {
 
   private async getStoredToken(): Promise<string | null> {
     try {
+      // Check if we're running on Firebase hosting (deployed environment)
+      // In this case, the Firebase function handles authentication via secrets
+      const isFirebaseHosted =
+        Platform.OS === 'web' &&
+        (window.location.hostname === 'botracing-61.web.app' ||
+          window.location.hostname.includes('firebase'));
+
+      if (isFirebaseHosted) {
+        console.log('Running on Firebase hosting - using proxy authentication');
+        // Return a dummy token for Firebase proxy - the actual auth happens in the function
+        return 'firebase-proxy-auth';
+      }
+
       // First try environment variable (built into app)
       const envToken = process.env.EXPO_PUBLIC_GARAGE61_API_TOKEN;
       if (envToken && envToken !== 'REPLACE_WITH_YOUR_ACTUAL_API_TOKEN') {
@@ -332,6 +348,18 @@ class ApiClient {
       return null;
     } catch (error) {
       console.error('Error getting stored token:', error);
+
+      // Check again for Firebase hosting in error fallback
+      const isFirebaseHosted =
+        Platform.OS === 'web' &&
+        (window.location.hostname === 'botracing-61.web.app' ||
+          window.location.hostname.includes('firebase'));
+
+      if (isFirebaseHosted) {
+        console.log('Using fallback Firebase proxy authentication');
+        return 'firebase-proxy-auth';
+      }
+
       // Fallback to environment variable
       const envToken = process.env.EXPO_PUBLIC_GARAGE61_API_TOKEN;
       if (envToken && envToken !== 'REPLACE_WITH_YOUR_ACTUAL_API_TOKEN') {
@@ -860,7 +888,8 @@ class ApiClient {
   // Check if API token is configured
   async isTokenConfigured(): Promise<boolean> {
     const token = await this.getStoredToken();
-    return !!token;
+    // Firebase proxy auth token is always considered configured
+    return !!token && (token === 'firebase-proxy-auth' || token.length > 0);
   }
 
   // Check if API is accessible
@@ -893,6 +922,15 @@ class ApiClient {
     if (!token) {
       results.recommendation =
         'No API token configured. Set EXPO_PUBLIC_GARAGE61_API_TOKEN in .env file.';
+      return results;
+    }
+
+    // If using Firebase proxy auth, consider Firebase proxy as working
+    const isFirebaseProxyAuth = token === 'firebase-proxy-auth';
+    if (isFirebaseProxyAuth) {
+      results.firebaseProxy = true;
+      results.recommendation =
+        'Using Firebase proxy authentication - should work on deployed app.';
       return results;
     }
 

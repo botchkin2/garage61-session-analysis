@@ -28,6 +28,7 @@ export const useUser = () => {
           'API token not configured - please set EXPO_PUBLIC_GARAGE61_API_TOKEN in .env',
         );
       }
+      // For Firebase proxy auth, we can proceed since the function handles authentication
       return apiClient.getCurrentUser();
     },
     staleTime: 60 * 60 * 1000, // 1 hour - increased
