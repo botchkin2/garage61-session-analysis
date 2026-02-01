@@ -1,24 +1,24 @@
-import React, {useState, useEffect, useMemo} from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
+  LapTime,
+  MetricCard,
+  RacingButton,
+  RacingCard,
+  RacingDivider,
+} from '@src/components';
+import {useLaps} from '@src/hooks/useApiQueries';
+import {RacingTheme} from '@src/theme';
+import {Lap, SessionData} from '@src/types';
+import React, {useEffect, useMemo, useState} from 'react';
+import {
   ActivityIndicator,
   Animated,
-  TouchableOpacity,
   Dimensions,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import {
-  RacingCard,
-  RacingButton,
-  MetricCard,
-  RacingDivider,
-  LapTime,
-} from '@src/components';
-import {RacingTheme} from '@src/theme';
-import {SessionData, Lap} from '@src/types';
-import {useLaps} from '@src/hooks/useApiQueries';
 
 interface SessionAnalysisProps {
   sessionData: SessionData;
@@ -341,9 +341,11 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
   return (
     <View style={styles.mainContainer}>
       <ScrollView
+        key={`scroll-${lapsSectionExpanded}`}
         style={styles.scrollView}
         contentContainerStyle={styles.contentContainer}
-        showsVerticalScrollIndicator={true}>
+        showsVerticalScrollIndicator={true}
+        keyboardShouldPersistTaps='handled'>
         <Animated.View style={[{opacity: fadeAnim}]}>
           <View style={styles.container}>
             {/* Back Button */}

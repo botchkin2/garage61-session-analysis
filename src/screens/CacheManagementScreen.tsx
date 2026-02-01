@@ -1,17 +1,17 @@
-import React, {useState, useEffect} from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-  ActivityIndicator,
-} from 'react-native';
-import {useCacheManagement} from '@src/hooks/useCacheManagement';
-import {apiClient} from '@src/utils/api';
-import {RacingTheme} from '@src/theme';
 import {BottomNavigation} from '@src/components';
+import {useCacheManagement} from '@src/hooks/useCacheManagement';
+import {RacingTheme} from '@src/theme';
+import {apiClient} from '@src/utils/api';
+import React, {useEffect, useState} from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
 interface CacheStats {
   csvCache: {

@@ -1,24 +1,24 @@
-import React, {useState, useEffect, useMemo, useCallback} from 'react';
+import {RacingButton, RacingCard, RacingDivider} from '@src/components';
+import {useLaps} from '@src/hooks/useApiQueries';
+import {RacingTheme} from '@src/theme';
+import {Lap, SessionData} from '@src/types';
+import {LAP_COLOR_SCHEMES, SERIES_BASE_COLORS} from '@src/utils/colors';
+import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
   ActivityIndicator,
   Animated,
   Dimensions,
+  ScrollView,
+  StyleSheet,
+  Text,
   TouchableOpacity,
+  View,
 } from 'react-native';
-import {RacingCard, RacingButton, RacingDivider} from '@src/components';
-import {RacingTheme} from '@src/theme';
-import {SessionData, Lap} from '@src/types';
-import {useLaps} from '@src/hooks/useApiQueries';
 import {
-  MultiLapTimeSeriesChart,
   LapTelemetryLoader,
+  MultiLapTimeSeriesChart,
   ProcessedLapData,
 } from './MultiLapTimeSeriesChart';
-import {SERIES_BASE_COLORS, LAP_COLOR_SCHEMES} from '@src/utils/colors';
 
 interface ChartConfig {
   id: string;
