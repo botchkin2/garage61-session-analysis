@@ -9,16 +9,16 @@ import {
   Dimensions,
   TouchableOpacity,
 } from 'react-native';
-import {RacingCard, RacingButton, RacingDivider} from '@/components';
-import {RacingTheme} from '@/theme';
-import {SessionData, Lap} from '@/types';
-import {useLaps} from '@/hooks/useApiQueries';
+import {RacingCard, RacingButton, RacingDivider} from '@src/components';
+import {RacingTheme} from '@src/theme';
+import {SessionData, Lap} from '@src/types';
+import {useLaps} from '@src/hooks/useApiQueries';
 import {
   MultiLapTimeSeriesChart,
   LapTelemetryLoader,
   ProcessedLapData,
 } from './MultiLapTimeSeriesChart';
-import {SERIES_BASE_COLORS, LAP_COLOR_SCHEMES} from '@/utils/colors';
+import {SERIES_BASE_COLORS, LAP_COLOR_SCHEMES} from '@src/utils/colors';
 
 interface ChartConfig {
   id: string;
@@ -40,7 +40,6 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
   // All hooks must be called before any conditional logic
   const [laps, setLaps] = useState<Lap[]>([]);
   const [fadeAnim] = useState(new Animated.Value(1));
-  const [_dimensions, _setDimensions] = useState(Dimensions.get('window'));
   const [internalSelectedLapIds, setInternalSelectedLapIds] = useState<
     Set<string>
   >(new Set());

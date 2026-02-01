@@ -1,5 +1,5 @@
 import {useQuery} from '@tanstack/react-query';
-import {apiClient} from '@/utils/api';
+import {apiClient} from '@src/utils/api';
 
 // Query keys for consistent cache management
 export const queryKeys = {
@@ -20,13 +20,31 @@ export const queryKeys = {
 export const useUser = () => {
   return useQuery({
     queryKey: queryKeys.user,
-    queryFn: () => apiClient.getCurrentUser(),
+    queryFn: async () => {
+      // Check if API token is configured before making the request
+      const token = await apiClient.getStoredToken();
+      if (!token) {
+        throw new Error(
+          'API token not configured - please set EXPO_PUBLIC_GARAGE61_API_TOKEN in .env',
+        );
+      }
+      return apiClient.getCurrentUser();
+    },
     staleTime: 60 * 60 * 1000, // 1 hour - increased
     gcTime: 2 * 60 * 60 * 1000, // 2 hours - increased
     // Allow refetch on mount if no cached data, but prevent other refetches
     refetchOnMount: true,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
+    // Don't retry if no token is configured
+    retry: (failureCount, error) => {
+      if (error?.message?.includes('API token not configured')) {
+        return false;
+      }
+      return failureCount < 2;
+    },
+    // Only run if we have a chance of succeeding
+    enabled: true, // We'll let it fail gracefully if no token
   });
 };
 

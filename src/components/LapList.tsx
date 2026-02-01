@@ -6,12 +6,12 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  ScrollView,
   Animated,
   Dimensions,
+  Platform,
 } from 'react-native';
-import {useLaps} from '@/hooks/useApiQueries';
-import {Lap} from '@/types';
+import {useLaps} from '@src/hooks/useApiQueries';
+import {Lap} from '@src/types';
 import {
   RacingCard,
   RacingButton,
@@ -19,8 +19,8 @@ import {
   LapTime,
   RacingDivider,
   TimeRangeSelector,
-} from '@/components';
-import {RacingTheme} from '@/theme';
+} from '@src/components';
+import {RacingTheme} from '@src/theme';
 
 interface EventGroup {
   eventId: string;
@@ -39,6 +39,20 @@ interface EventGroup {
 interface LapListProps {
   onSessionAnalysis?: (sessionData: import('@/types').SessionData) => void;
 }
+
+// Helper function for session type names
+const getSessionTypeName = (type: number): string => {
+  switch (type) {
+    case 1:
+      return 'Practice';
+    case 2:
+      return 'Qualifying';
+    case 3:
+      return 'Race';
+    default:
+      return 'Unknown';
+  }
+};
 
 const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
   const [loading, setLoading] = useState(true);
@@ -141,16 +155,30 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
 
   // Group laps by event when data changes
   const groupedEvents = useMemo(() => {
+    console.log('🔄 LapList: Processing lapsResponse:', {
+      hasResponse: !!lapsResponse,
+      hasItems: !!lapsResponse?.items,
+      itemCount: lapsResponse?.items?.length || 0,
+      platform: Platform.OS,
+    });
+
     if (!lapsResponse?.items) {
+      console.log('❌ LapList: No items in lapsResponse');
       return [];
     }
 
     const grouped = groupLapsByEvent(lapsResponse.items);
+    console.log('✅ LapList: Grouped into', grouped.length, 'events');
     return grouped;
   }, [lapsResponse, groupLapsByEvent]);
 
   // Update event groups when grouped data changes
   useEffect(() => {
+    console.log(
+      '📝 LapList: Setting eventGroups with',
+      groupedEvents.length,
+      'events',
+    );
     setEventGroups(groupedEvents);
   }, [groupedEvents]);
 
@@ -191,6 +219,14 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
 
   // Determine if we should use mobile layout (screen width < 768px)
   const isMobile = dimensions.width < 768;
+  console.log(
+    '📱 LapList: Screen dimensions:',
+    dimensions.width,
+    'x',
+    dimensions.height,
+    'isMobile:',
+    isMobile,
+  );
 
   const formatDate = (dateString: string): string => {
     return new Date(dateString).toLocaleDateString();
@@ -207,19 +243,6 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
       return 'Last 7 Days';
     }
     return `Last ${days} Days`;
-  };
-
-  const getSessionTypeName = (type: number): string => {
-    switch (type) {
-      case 1:
-        return 'Practice';
-      case 2:
-        return 'Qualifying';
-      case 3:
-        return 'Race';
-      default:
-        return 'Unknown';
-    }
   };
 
   if (loading) {
@@ -291,44 +314,61 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
     onSessionAnalysis(sessionData);
   };
 
+  console.log(
+    '🎬 LapList: Main render - loading:',
+    loading,
+    'error:',
+    !!error,
+    'eventGroups:',
+    eventGroups.length,
+  );
+
   return (
     <View style={styles.mainContainer}>
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.contentContainer}
-        showsVerticalScrollIndicator={true}>
-        <Animated.View style={[{opacity: fadeAnim}]}>
-          <View style={styles.container}>
-            {/* Racing Dashboard Header */}
-            <View style={styles.dashboardHeader}>
-              <Text style={styles.dashboardTitle}>RACING ANALYTICS</Text>
-              <Text style={styles.dashboardSubtitle}>
-                {formatTimeRange(selectedTimeRange)} Performance
-              </Text>
-            </View>
+      <Animated.View style={[styles.fadeContainer, {opacity: fadeAnim}]}>
+        <View style={styles.container}>
+          {/* Racing Dashboard Header */}
+          <View style={styles.dashboardHeader}>
+            <Text style={styles.dashboardTitle}>RACING ANALYTICS</Text>
+            <Text style={styles.dashboardSubtitle}>
+              {formatTimeRange(selectedTimeRange)} Performance
+            </Text>
+          </View>
 
-            {/* Time Range Selector */}
-            <TimeRangeSelector
-              selectedRange={selectedTimeRange}
-              onRangeChange={setSelectedTimeRange}
-              style={styles.timeRangeSelector}
-            />
+          {/* Time Range Selector */}
+          {console.log(
+            '🎛️ LapList: Rendering TimeRangeSelector with range:',
+            selectedTimeRange,
+          )}
+          <TimeRangeSelector
+            selectedRange={selectedTimeRange}
+            onRangeChange={setSelectedTimeRange}
+            style={styles.timeRangeSelector}
+          />
 
-            {/* Refresh Button */}
-            <RacingButton
-              title='🔄 REFRESH TELEMETRY'
-              onPress={handleRefresh}
-              style={styles.refreshButton}
-              disabled={refreshing}
-            />
+          {/* Refresh Button */}
+          <RacingButton
+            title='🔄 REFRESH TELEMETRY'
+            onPress={handleRefresh}
+            style={styles.refreshButton}
+            disabled={refreshing}
+          />
 
-            {/* Event Sessions List */}
-            <View style={styles.eventsSection}>
-              <Text style={styles.sectionTitle}>SESSION ANALYSIS</Text>
+          {/* Event Sessions List */}
+          <View style={styles.eventsSection}>
+            <Text style={styles.sectionTitle}>SESSION ANALYSIS</Text>
 
-              <FlatList
-                data={eventGroups}
-                renderItem={({item: event}) => (
+            <FlatList
+              data={eventGroups}
+              renderItem={({item: event}) => {
+                console.log(
+                  '🎨 LapList: Rendering event:',
+                  event.eventId,
+                  event.primaryCar,
+                  event.laps.length,
+                  'laps',
+                );
+                return (
                   <RacingCard key={event.eventId} style={styles.eventCard}>
                     {/* Event Header */}
                     <TouchableOpacity
@@ -538,29 +578,29 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
                       </View>
                     )}
                   </RacingCard>
-                )}
-                keyExtractor={item => item.eventId}
-                showsVerticalScrollIndicator={false}
-                style={styles.eventsList}
-              />
+                );
+              }}
+              keyExtractor={item => item.eventId}
+              showsVerticalScrollIndicator={false}
+              style={styles.eventsList}
+            />
 
-              {eventGroups.length === 0 && !loading && (
-                <RacingCard style={styles.emptyCard}>
-                  <Text style={styles.emptyIcon}>🏁</Text>
-                  <Text style={styles.emptyTitle}>NO RACING DATA</Text>
-                  <Text style={styles.emptyMessage}>
-                    No laps recorded in the{' '}
-                    {formatTimeRange(selectedTimeRange).toLowerCase()}.{'\n'}
-                    Hit the track and start analyzing your performance!
-                  </Text>
-                </RacingCard>
-              )}
-            </View>
-
-            <View style={styles.bottomSpacing} />
+            {eventGroups.length === 0 && !loading && (
+              <RacingCard style={styles.emptyCard}>
+                <Text style={styles.emptyIcon}>🏁</Text>
+                <Text style={styles.emptyTitle}>NO RACING DATA</Text>
+                <Text style={styles.emptyMessage}>
+                  No laps recorded in the{' '}
+                  {formatTimeRange(selectedTimeRange).toLowerCase()}.{'\n'}
+                  Hit the track and start analyzing your performance!
+                </Text>
+              </RacingCard>
+            )}
           </View>
-        </Animated.View>
-      </ScrollView>
+
+          <View style={styles.bottomSpacing} />
+        </View>
+      </Animated.View>
     </View>
   );
 };
@@ -569,6 +609,9 @@ const styles = StyleSheet.create({
   mainContainer: {
     flex: 1,
     backgroundColor: RacingTheme.colors.background,
+  },
+  fadeContainer: {
+    flex: 1,
   },
   fullHeightContainer: {
     flex: 1,

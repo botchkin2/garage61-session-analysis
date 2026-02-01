@@ -7,15 +7,16 @@ import {
   ActivityIndicator,
   Animated,
 } from 'react-native';
-import {useAuth} from '@/utils';
-
+import {useAuth} from '@src/utils/authContext';
+import {RacingCard, RacingButton, StatusBadge} from './RacingUI';
+import {RacingTheme} from '@src/theme';
 // Web-specific types
 declare const window: any;
-import {RacingCard, RacingButton, StatusBadge} from '@/components';
-import {RacingTheme} from '@/theme';
 
 const UserProfile: React.FC = React.memo(() => {
   const {user, isLoading, error, isAuthenticated} = useAuth();
+
+  UserProfile.displayName = 'UserProfile';
   const [fadeAnim] = useState(new Animated.Value(1));
 
   useEffect(() => {
@@ -108,7 +109,9 @@ const UserProfile: React.FC = React.memo(() => {
                   <Text style={styles.driverName}>
                     {user.firstName} {user.lastName}
                   </Text>
-                  <Text style={styles.driverNickname}>"{user.nickName}"</Text>
+                  <Text style={styles.driverNickname}>
+                    &quot;{user.nickName}&quot;
+                  </Text>
                   <Text style={styles.driverId}>ID: {user.id}</Text>
                 </View>
               </View>

@@ -6,12 +6,15 @@ import {
   Dimensions,
   TouchableOpacity,
 } from 'react-native';
-import {Lap} from '@/types';
-import {useTelemetry} from '@/hooks/useApiQueries';
-import {findClosestIndex} from '@/utils/binarySearch';
-import {SERIES_BASE_COLORS, LAP_COLOR_SCHEMES} from '@/utils/colors';
-import {parseTelemetryData, type TimeSeriesData} from '@/utils/dataProcessing';
-import {convertLatLongToXY, type TrackMapData} from '@/utils/geometry';
+import {Lap} from '@src/types';
+import {useTelemetry} from '@src/hooks/useApiQueries';
+import {findClosestIndex} from '@src/utils/binarySearch';
+import {SERIES_BASE_COLORS, LAP_COLOR_SCHEMES} from '@src/utils/colors';
+import {
+  parseTelemetryData,
+  type TimeSeriesData,
+} from '@src/utils/dataProcessing';
+import {convertLatLongToXY, type TrackMapData} from '@src/utils/geometry';
 
 const {width} = Dimensions.get('window');
 
@@ -55,12 +58,18 @@ interface MultiLapTimeSeriesChartProps {
   // Shared position tracking
   externalCurrentPosition?: number;
   onPositionChange?: (position: number) => void;
+  // Error handling
+  onApiError?: () => void;
 }
 
 // Component to handle individual lap telemetry loading
 export const LapTelemetryLoader: React.FC<{
   lap: Lap;
-  onLapCompleted: (lapId: string, data: ProcessedLapData | null) => void;
+  onLapCompleted: (
+    lapId: string,
+    data: ProcessedLapData | null,
+    error?: any,
+  ) => void;
   lapIndex: number;
 }> = ({lap, onLapCompleted, lapIndex}) => {
   // Stagger CSV loading to prevent overwhelming the server
@@ -155,9 +164,9 @@ export const LapTelemetryLoader: React.FC<{
           onLapCompleted(lap.id, null);
         }
       } else if (query.isError) {
-        onLapCompleted(lap.id, null);
+        onLapCompleted(lap.id, null, query.error);
       }
-    } catch (error) {
+    } catch {
       onLapCompleted(lap.id, null);
     }
   }, [
@@ -187,6 +196,7 @@ export const MultiLapTimeSeriesChart: React.FC<
   preloadedData,
   externalCurrentPosition,
   onPositionChange,
+  onApiError,
 }) => {
   // Use preloaded data if provided, otherwise manage our own state
   const [lapDataMap, setLapDataMap] = useState<Map<string, ProcessedLapData>>(

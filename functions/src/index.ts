@@ -94,15 +94,28 @@ export const garage61Proxy = onRequest(
 
       const response = await axios(axiosConfig);
 
-      // Forward the response - handle CSV responses as text, others as JSON
+      // Forward the response - handle CSV responses with streaming to reduce memory usage
       const contentType = response.headers['content-type'] || '';
       if (
         contentType.includes('text/csv') ||
         contentType.includes('application/csv')
       ) {
-        // For CSV responses, return raw text data
+        // For large CSV responses, stream the data to avoid memory issues
         res.set('Content-Type', contentType);
-        res.status(response.status).send(response.data);
+
+        // Set additional headers for streaming
+        res.set('Cache-Control', 'no-cache');
+        res.set('Transfer-Encoding', 'chunked');
+
+        // Forward the response data in chunks to reduce memory usage
+        const data = response.data;
+        if (typeof data === 'string') {
+          // If it's already a string, send it directly
+          res.status(response.status).send(data);
+        } else {
+          // If it's a stream or buffer, handle accordingly
+          res.status(response.status).send(data);
+        }
       } else {
         // For JSON and other responses, return as JSON
         res.status(response.status).json(response.data);

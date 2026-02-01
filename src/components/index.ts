@@ -16,3 +16,10 @@ export {
   RacingDivider,
   TimeRangeSelector,
 } from './RacingUI';
+
+// Expo UI Components
+export {default as ThemedText} from './themed-text';
+export {default as ThemedView} from './themed-view';
+export {default as HapticTab} from './haptic-tab';
+export {default as HamburgerMenu} from './HamburgerMenu';
+export {default as BottomNavigation} from './BottomNavigation';

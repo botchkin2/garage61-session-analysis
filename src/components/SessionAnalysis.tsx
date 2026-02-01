@@ -15,10 +15,10 @@ import {
   MetricCard,
   RacingDivider,
   LapTime,
-} from '@/components';
-import {RacingTheme} from '@/theme';
-import {SessionData, Lap} from '@/types';
-import {useLaps} from '@/hooks/useApiQueries';
+} from '@src/components';
+import {RacingTheme} from '@src/theme';
+import {SessionData, Lap} from '@src/types';
+import {useLaps} from '@src/hooks/useApiQueries';
 
 interface SessionAnalysisProps {
   sessionData: SessionData;
@@ -325,6 +325,14 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
         <View style={styles.centerContainer}>
           <Text style={styles.errorText}>ERROR LOADING SESSION LAPS</Text>
           <Text style={styles.errorText}>{error.message}</Text>
+
+          <View style={styles.errorActions}>
+            <Text style={styles.errorHelpText}>
+              This appears to be a network or server error. The API token is
+              configured server-side via Firebase. Try refreshing or contact
+              support if the issue persists.
+            </Text>
+          </View>
         </View>
       </View>
     );
@@ -1329,6 +1337,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: RacingTheme.spacing.lg,
     letterSpacing: 1,
+  },
+  errorActions: {
+    alignItems: 'center',
+    marginTop: RacingTheme.spacing.xl,
+  },
+  errorHelpText: {
+    fontSize: RacingTheme.typography.body,
+    color: RacingTheme.colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: RacingTheme.spacing.lg,
+    paddingHorizontal: RacingTheme.spacing.lg,
+    lineHeight: 20,
   },
   bottomSpacing: {
     height: RacingTheme.spacing.xxxl,

@@ -6,7 +6,7 @@ import {
   StyleSheet,
   ViewStyle,
 } from 'react-native';
-import {RacingTheme} from '@/theme';
+import {RacingTheme} from '@src/theme';
 
 interface RacingCardProps {
   children: React.ReactNode;

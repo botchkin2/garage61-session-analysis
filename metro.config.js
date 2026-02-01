@@ -1,43 +1,61 @@
-const {getDefaultConfig, mergeConfig} = require('@react-native/metro-config');
+const {getDefaultConfig} = require('@expo/metro-config');
 
-const fs = require('fs');
-const path = require('path');
-const exclusionList = require('metro-config/src/defaults/exclusionList');
+const config = getDefaultConfig(__dirname);
 
-const rnwPath = fs.realpathSync(
-  path.resolve(require.resolve('react-native-windows/package.json'), '..'),
-);
+// Configure server with proxy
+config.server = {
+  ...config.server,
+  enhanceMiddleware: middleware => {
+    return (req, res, next) => {
+      // Simple proxy for /api/garage61 routes
+      if (req.url.startsWith('/api/garage61')) {
+        const https = require('https');
+        const url = require('url');
 
-/**
- * Metro configuration
- * https://facebook.github.io/metro/docs/configuration
- *
- * @type {import('metro-config').MetroConfig}
- */
+        // Rewrite the URL to point to garage61.net
+        const targetUrl = req.url.replace('/api/garage61', '');
+        // Build headers object, filtering out undefined values
+        const headers = {
+          host: 'garage61.net',
+          'user-agent': req.headers['user-agent'] || 'Expo-Proxy/1.0',
+          'accept-encoding': 'identity', // Disable compression
+        };
 
-const config = {
-  resolver: {
-    blockList: exclusionList([
-      // This stops "react-native run-windows" from causing the metro server to crash if its already running
-      new RegExp(
-        `${path.resolve(__dirname, 'windows').replace(/[/\\]/g, '/')}.*`,
-      ),
-      // This prevents "react-native run-windows" from hitting: EBUSY: resource busy or locked, open msbuild.ProjectImports.zip or other files produced by msbuild
-      new RegExp(`${rnwPath}/build/.*`),
-      new RegExp(`${rnwPath}/target/.*`),
-      /.*\.ProjectImports\.zip/,
-    ]),
-  },
-  transformer: {
-    getTransformOptions: async () => ({
-      transform: {
-        experimentalImportSupport: false,
-        inlineRequires: true,
-      },
-    }),
-    // This fixes the 'missing-asset-registry-path` error (see https://github.com/microsoft/react-native-windows/issues/11437)
-    assetRegistryPath: 'react-native/Libraries/Image/AssetRegistry',
+        // Only include headers that have actual values
+        if (req.headers.accept) headers['accept'] = req.headers.accept;
+        if (req.headers['content-type'])
+          headers['content-type'] = req.headers['content-type'];
+        if (req.headers.authorization)
+          headers['authorization'] = req.headers.authorization;
+
+        const options = {
+          protocol: 'https:',
+          hostname: 'garage61.net',
+          port: 443,
+          path: `/api/v1${targetUrl}`,
+          method: req.method,
+          headers: headers,
+        };
+
+        const proxyReq = https.request(options, proxyRes => {
+          res.writeHead(proxyRes.statusCode, proxyRes.headers);
+          proxyRes.pipe(res);
+        });
+
+        proxyReq.on('error', err => {
+          console.error('Proxy error:', err);
+          res.writeHead(500);
+          res.end('Proxy error');
+        });
+
+        // Pipe the request body
+        req.pipe(proxyReq);
+        return;
+      }
+
+      return middleware(req, res, next);
+    };
   },
 };
 
-module.exports = mergeConfig(getDefaultConfig(__dirname), config);
+module.exports = config;

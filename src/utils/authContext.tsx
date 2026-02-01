@@ -1,6 +1,6 @@
 import React, {createContext, useContext, ReactNode} from 'react';
-import {useUser} from '@/hooks/useApiQueries';
-import {Garage61User} from '@/types';
+import {useUser} from '@src/hooks/useApiQueries';
+import {Garage61User} from '@src/types';
 
 interface AuthContextType {
   user: Garage61User | null;
@@ -24,11 +24,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = React.memo(
       await refetch();
     };
 
+    // Handle the "API token not configured" case gracefully
+    const isTokenNotConfigured = error?.message === 'API token not configured';
+    const actualError = isTokenNotConfigured ? null : error?.message || null;
+
     const value: AuthContextType = {
       user: user || null,
-      isLoading,
+      isLoading: isLoading && !isTokenNotConfigured,
       isAuthenticated: !!user,
-      error: error?.message || null,
+      error: actualError,
       refreshUser,
     };
 
@@ -37,6 +41,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = React.memo(
     );
   },
 );
+
+AuthProvider.displayName = 'AuthProvider';
 
 export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);

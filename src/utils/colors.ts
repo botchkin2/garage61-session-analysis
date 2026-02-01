@@ -23,8 +23,8 @@ export type SeriesKey = keyof typeof SERIES_BASE_COLORS;
  */
 export const generateLapColorScheme = (
   maxLaps: number = 10,
-): Array<Record<string, string>> => {
-  const lapSchemes: Array<Record<string, string>> = [];
+): Record<string, string>[] => {
+  const lapSchemes: Record<string, string>[] = [];
 
   for (let lapIndex = 0; lapIndex < maxLaps; lapIndex++) {
     const lapColors: Record<string, string> = {};
