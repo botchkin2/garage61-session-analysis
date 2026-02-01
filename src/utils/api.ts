@@ -252,9 +252,13 @@ class ApiClient {
         } API Request: ${config.method?.toUpperCase()} ${fullUrl}`,
       );
 
-      if (token) {
+      if (token && token !== 'firebase-proxy-auth') {
         config.headers.Authorization = `Bearer ${token}`;
         console.log('✅ Authorization header set');
+      } else if (token === 'firebase-proxy-auth') {
+        console.log(
+          '🔥 Using Firebase proxy authentication - no bearer token needed',
+        );
       } else {
         console.log('❌ No token available for request');
       }
@@ -944,7 +948,10 @@ class ApiClient {
         `Testing Firebase proxy connection (${Platform.OS}): ${testUrl}/me`,
       );
       await axios.get(testUrl + '/me', {
-        headers: {Authorization: `Bearer ${token}`},
+        headers:
+          token !== 'firebase-proxy-auth'
+            ? {Authorization: `Bearer ${token}`}
+            : {},
         timeout: 5000,
       });
       results.firebaseProxy = true;
@@ -957,7 +964,10 @@ class ApiClient {
     try {
       console.log('Testing direct API connection...');
       await axios.get(DIRECT_API_URL + '/me', {
-        headers: {Authorization: `Bearer ${token}`},
+        headers:
+          token !== 'firebase-proxy-auth'
+            ? {Authorization: `Bearer ${token}`}
+            : {},
         timeout: 5000,
       });
       results.directApi = true;

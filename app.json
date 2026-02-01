@@ -52,6 +52,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "955eb6ab-5668-4224-88e1-3e75399ebad9"
+      }
+    },
+    "owner": "botventure"
   }
 }
