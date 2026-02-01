@@ -1,9 +1,9 @@
-import axios, {AxiosInstance, AxiosResponse, AxiosError} from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {API_CONFIG} from '@src/config/api';
+import {ApiError, Garage61User, LapsResponse} from '@src/types';
+import axios, {AxiosError, AxiosInstance, AxiosResponse} from 'axios';
 import * as FileSystem from 'expo-file-system';
 import {Platform} from 'react-native';
-import {Garage61User, LapsResponse, ApiError} from '@src/types';
-import {API_CONFIG} from '@src/config/api';
 
 // Type declaration for web environment
 declare const window: any;
@@ -11,9 +11,8 @@ declare const window: any;
 // Configure API endpoints
 const FIREBASE_PROXY_URL = '/api/garage61'; // For web
 const FIREBASE_HOSTING_URL = 'https://botracing-61.web.app/api/garage61'; // For mobile
-const DIRECT_API_URL = 'https://garage61.net/api/v1'; // Fallback
 
-// Use platform-specific URLs
+// Use platform-specific URLs - always go through Firebase proxy
 const API_BASE_URL = Platform.select({
   web: FIREBASE_PROXY_URL,
   default: FIREBASE_HOSTING_URL, // Use full Firebase hosting URL on mobile
@@ -242,9 +241,8 @@ class ApiClient {
       timeout: API_CONFIG.TIMEOUT,
     });
 
-    // Add request interceptor to dynamically set auth header
+    // Add request interceptor to log requests
     this.client.interceptors.request.use(async config => {
-      const token = await this.getStoredToken();
       const fullUrl = config.baseURL + config.url;
       console.log(
         `🌐 ${
@@ -252,16 +250,10 @@ class ApiClient {
         } API Request: ${config.method?.toUpperCase()} ${fullUrl}`,
       );
 
-      if (token && token !== 'firebase-proxy-auth') {
-        config.headers.Authorization = `Bearer ${token}`;
-        console.log('✅ Authorization header set');
-      } else if (token === 'firebase-proxy-auth') {
-        console.log(
-          '🔥 Using Firebase proxy authentication - no bearer token needed',
-        );
-      } else {
-        console.log('❌ No token available for request');
-      }
+      // Always using Firebase proxy now
+      console.log(
+        '🔥 Using Firebase proxy authentication - no bearer token needed',
+      );
       return config;
     });
 
@@ -319,58 +311,15 @@ class ApiClient {
 
   private async getStoredToken(): Promise<string | null> {
     try {
-      // Check if we're running on Firebase hosting (deployed environment)
-      // In this case, the Firebase function handles authentication via secrets
-      const isFirebaseHosted =
-        Platform.OS === 'web' &&
-        (window.location.hostname === 'botracing-61.web.app' ||
-          window.location.hostname.includes('firebase'));
-
-      if (isFirebaseHosted) {
-        console.log('Running on Firebase hosting - using proxy authentication');
-        // Return a dummy token for Firebase proxy - the actual auth happens in the function
-        return 'firebase-proxy-auth';
-      }
-
-      // First try environment variable (built into app)
-      const envToken = process.env.EXPO_PUBLIC_GARAGE61_API_TOKEN;
-      if (envToken && envToken !== 'REPLACE_WITH_YOUR_ACTUAL_API_TOKEN') {
-        console.log('Using built-in API token from environment');
-        return envToken;
-      }
-
-      // Fallback to AsyncStorage (for manual override)
-      const storedToken = await AsyncStorage.getItem(API_CONFIG.STORAGE_KEY);
-      if (storedToken) {
-        console.log('Using token from AsyncStorage');
-        return storedToken;
-      }
-
-      console.log(
-        'No API token configured - please set EXPO_PUBLIC_GARAGE61_API_TOKEN in .env',
-      );
-      return null;
+      // Always use Firebase proxy authentication since we always go through Firebase
+      console.log('Using Firebase proxy authentication');
+      // Return a dummy token for Firebase proxy - the actual auth happens in the function
+      return 'firebase-proxy-auth';
     } catch (error) {
       console.error('Error getting stored token:', error);
-
-      // Check again for Firebase hosting in error fallback
-      const isFirebaseHosted =
-        Platform.OS === 'web' &&
-        (window.location.hostname === 'botracing-61.web.app' ||
-          window.location.hostname.includes('firebase'));
-
-      if (isFirebaseHosted) {
-        console.log('Using fallback Firebase proxy authentication');
-        return 'firebase-proxy-auth';
-      }
-
-      // Fallback to environment variable
-      const envToken = process.env.EXPO_PUBLIC_GARAGE61_API_TOKEN;
-      if (envToken && envToken !== 'REPLACE_WITH_YOUR_ACTUAL_API_TOKEN') {
-        console.log('Using fallback environment token');
-        return envToken;
-      }
-      return null;
+      // Always fallback to Firebase proxy
+      console.log('Using fallback Firebase proxy authentication');
+      return 'firebase-proxy-auth';
     }
   }
 
@@ -929,16 +878,7 @@ class ApiClient {
       return results;
     }
 
-    // If using Firebase proxy auth, consider Firebase proxy as working
-    const isFirebaseProxyAuth = token === 'firebase-proxy-auth';
-    if (isFirebaseProxyAuth) {
-      results.firebaseProxy = true;
-      results.recommendation =
-        'Using Firebase proxy authentication - should work on deployed app.';
-      return results;
-    }
-
-    // Test Firebase proxy (platform-specific)
+    // Always using Firebase proxy now
     try {
       const testUrl = Platform.select({
         web: FIREBASE_PROXY_URL,
@@ -956,36 +896,12 @@ class ApiClient {
       });
       results.firebaseProxy = true;
       console.log('✅ Firebase proxy works');
+      results.recommendation =
+        'Using Firebase proxy - should work on all platforms.';
     } catch (error) {
       console.log('❌ Firebase proxy failed:', error.message);
-    }
-
-    // Test direct API
-    try {
-      console.log('Testing direct API connection...');
-      await axios.get(DIRECT_API_URL + '/me', {
-        headers:
-          token !== 'firebase-proxy-auth'
-            ? {Authorization: `Bearer ${token}`}
-            : {},
-        timeout: 5000,
-      });
-      results.directApi = true;
-      console.log('✅ Direct API works');
-    } catch (error) {
-      console.log('❌ Direct API failed:', error.message);
-    }
-
-    // Provide recommendation
-    if (results.firebaseProxy) {
       results.recommendation =
-        'Using Firebase proxy - should work on both web and mobile.';
-    } else if (results.directApi) {
-      results.recommendation =
-        'Firebase proxy not accessible. Consider deploying Firebase functions or switching to direct API.';
-    } else {
-      results.recommendation =
-        'Both Firebase proxy and direct API failed. Check your API token and network connection.';
+        'Firebase proxy not accessible. Check Firebase function deployment and network.';
     }
 
     return results;

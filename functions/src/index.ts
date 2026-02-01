@@ -1,6 +1,6 @@
-import {onRequest} from 'firebase-functions/v2/https';
-import {defineSecret} from 'firebase-functions/params';
 import axios, {AxiosRequestConfig} from 'axios';
+import {defineSecret} from 'firebase-functions/params';
+import {onRequest} from 'firebase-functions/v2/https';
 
 // Type definitions for Express-style request/response
 interface Request {
@@ -64,6 +64,7 @@ export const garage61Proxy = onRequest(
           Authorization: `Bearer ${apiToken}`,
           'Content-Type': 'application/json',
           // Forward other headers but exclude host and some Firebase-specific ones
+          // Also exclude Authorization header since we use Firebase secrets
           ...Object.fromEntries(
             Object.entries(req.headers).filter(
               ([key]) =>
@@ -77,12 +78,14 @@ export const garage61Proxy = onRequest(
                   'trailers',
                   'transfer-encoding',
                   'upgrade',
+                  'authorization', // Exclude client Authorization header
                 ].includes(key.toLowerCase()),
             ),
           ),
         },
         params: req.query,
-        timeout: 30000, // 30 second timeout
+        timeout: req.path?.includes('/csv') ? 60000 : 30000, // 60 seconds for CSV downloads, 30 for others
+        responseType: req.path?.includes('/csv') ? 'stream' : undefined, // Stream large CSV responses
       };
 
       // Add body for non-GET requests
@@ -91,35 +94,66 @@ export const garage61Proxy = onRequest(
       }
 
       console.log(`Proxying ${req.method} ${req.path} -> ${targetUrl}`);
+      console.log(`Request headers:`, JSON.stringify(req.headers, null, 2));
+      console.log(`Target URL: ${targetUrl}`);
+      console.log(`Is CSV request: ${req.path.includes('/csv')}`);
 
-      const response = await axios(axiosConfig);
-
-      // Forward the response - handle CSV responses with streaming to reduce memory usage
-      const contentType = response.headers['content-type'] || '';
-      if (
-        contentType.includes('text/csv') ||
-        contentType.includes('application/csv')
-      ) {
-        // For large CSV responses, stream the data to avoid memory issues
-        res.set('Content-Type', contentType);
-
-        // Set additional headers for streaming
-        res.set('Cache-Control', 'no-cache');
-        res.set('Transfer-Encoding', 'chunked');
-
-        // Forward the response data in chunks to reduce memory usage
-        const data = response.data;
-        if (typeof data === 'string') {
-          // If it's already a string, send it directly
-          res.status(response.status).send(data);
-        } else {
-          // If it's a stream or buffer, handle accordingly
-          res.status(response.status).send(data);
-        }
-      } else {
-        // For JSON and other responses, return as JSON
-        res.status(response.status).json(response.data);
+      let response;
+      try {
+        console.log(`Making axios request to: ${targetUrl}`);
+        console.log(`Axios config:`, {
+          method: axiosConfig.method,
+          url: axiosConfig.url,
+          timeout: axiosConfig.timeout,
+          headers: axiosConfig.headers,
+        });
+        response = await axios(axiosConfig);
+        console.log(`Upstream response received: ${response.status}`);
+      } catch (upstreamError: any) {
+        console.error(`Upstream error connecting to ${targetUrl}:`, {
+          message: upstreamError.message,
+          code: upstreamError.code,
+          errno: upstreamError.errno,
+          syscall: upstreamError.syscall,
+          hostname: upstreamError.hostname,
+          status: upstreamError.response?.status,
+          statusText: upstreamError.response?.statusText,
+          data: upstreamError.response?.data,
+          stack: upstreamError.stack,
+        });
+        throw upstreamError;
       }
+
+      // Forward the response with minimal header processing
+      const contentType = response.headers['content-type'] || '';
+      const isCsv =
+        contentType.includes('text/csv') ||
+        contentType.includes('application/csv');
+
+      console.log(`Response content-type: ${contentType}, isCsv: ${isCsv}`);
+
+      // Only forward essential headers, avoid transfer-encoding conflicts
+      const headersToForward = [
+        'content-type',
+        'content-length',
+        'cache-control',
+        'last-modified',
+      ];
+      headersToForward.forEach(headerName => {
+        const headerValue = response.headers[headerName];
+        if (headerValue) {
+          res.set(headerName, headerValue as string);
+        }
+      });
+
+      // For CSV responses, add no-cache header
+      if (isCsv) {
+        res.set('Cache-Control', 'no-cache');
+      }
+
+      // Send response - let Firebase handle the rest
+      console.log(`Sending response with status ${response.status}`);
+      res.status(response.status).send(response.data);
     } catch (error: any) {
       console.error('Proxy error:', error);
 

@@ -147,6 +147,18 @@ npm run reset-project
 
 This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
 
+## Building for Production
+
+### Android Development Build
+
+To build a development version of the Android app using EAS Build:
+
+```bash
+npm run build:android:development
+```
+
+This runs `npx eas build --platform android --profile development` to create a development build that can be installed on Android devices for testing.
+
 ## Learn more
 
 To learn more about developing your project with Expo, look at the following resources:
