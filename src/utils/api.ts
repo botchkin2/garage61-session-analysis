@@ -3,20 +3,12 @@ import {API_CONFIG} from '@src/config/api';
 import {ApiError, Garage61User, LapsResponse} from '@src/types';
 import axios, {AxiosError, AxiosInstance, AxiosResponse} from 'axios';
 import * as FileSystem from 'expo-file-system';
-import {Platform} from 'react-native';
-
-// Type declaration for web environment
-declare const window: any;
 
 // Configure API endpoints
-const FIREBASE_PROXY_URL = '/api/garage61'; // For web
-const FIREBASE_HOSTING_URL = 'https://botracing-61.web.app/api/garage61'; // For mobile
+const FIREBASE_HOSTING_URL = 'https://botracing-61.web.app/api/garage61'; // For all platforms
 
-// Use platform-specific URLs - always go through Firebase proxy
-const API_BASE_URL = Platform.select({
-  web: FIREBASE_PROXY_URL,
-  default: FIREBASE_HOSTING_URL, // Use full Firebase hosting URL on mobile
-});
+// Always use Firebase proxy for all platforms (web and mobile)
+const API_BASE_URL = FIREBASE_HOSTING_URL;
 
 // Global request cache to ensure proper deduplication
 // For React Native, we use a module-level variable since HMR works differently
@@ -230,7 +222,7 @@ class ApiClient {
 
   constructor() {
     console.log(
-      `🚗 API Client initialized for ${Platform.OS} with base URL: ${API_BASE_URL}`,
+      `🚗 API Client initialized with Firebase proxy: ${API_BASE_URL}`,
     );
 
     this.client = axios.create({
@@ -245,9 +237,7 @@ class ApiClient {
     this.client.interceptors.request.use(async config => {
       const fullUrl = config.baseURL + config.url;
       console.log(
-        `🌐 ${
-          Platform.OS
-        } API Request: ${config.method?.toUpperCase()} ${fullUrl}`,
+        `🌐 Firebase Proxy API Request: ${config.method?.toUpperCase()} ${fullUrl}`,
       );
 
       // Always using Firebase proxy now
@@ -262,9 +252,7 @@ class ApiClient {
       response => {
         const fullUrl = response.config.baseURL + response.config.url;
         console.log(
-          `✅ ${
-            Platform.OS
-          } API Response: ${response.config.method?.toUpperCase()} ${fullUrl} - Status: ${
+          `✅ Firebase Proxy API Response: ${response.config.method?.toUpperCase()} ${fullUrl} - Status: ${
             response.status
           }`,
         );
@@ -290,7 +278,7 @@ class ApiClient {
       },
       (error: AxiosError) => {
         const fullUrl = error.config?.baseURL + error.config?.url;
-        console.error(`❌ ${Platform.OS} API Error for ${fullUrl}:`, {
+        console.error(`❌ Firebase Proxy API Error for ${fullUrl}:`, {
           message: error.message,
           code: error.code,
           status: error.response?.status,
@@ -310,17 +298,9 @@ class ApiClient {
   }
 
   private async getStoredToken(): Promise<string | null> {
-    try {
-      // Always use Firebase proxy authentication since we always go through Firebase
-      console.log('Using Firebase proxy authentication');
-      // Return a dummy token for Firebase proxy - the actual auth happens in the function
-      return 'firebase-proxy-auth';
-    } catch (error) {
-      console.error('Error getting stored token:', error);
-      // Always fallback to Firebase proxy
-      console.log('Using fallback Firebase proxy authentication');
-      return 'firebase-proxy-auth';
-    }
+    // Always use Firebase proxy authentication - no local token needed
+    // The Firebase function handles authentication with the server-side token
+    return 'firebase-proxy-auth';
   }
 
   // Deduplicate requests to prevent redundant API calls
@@ -838,11 +818,10 @@ class ApiClient {
     }
   }
 
-  // Check if API token is configured
+  // Check if API is configured (always true for Firebase proxy)
   async isTokenConfigured(): Promise<boolean> {
-    const token = await this.getStoredToken();
-    // Firebase proxy auth token is always considered configured
-    return !!token && (token === 'firebase-proxy-auth' || token.length > 0);
+    // Firebase proxy authentication is always configured
+    return true;
   }
 
   // Check if API is accessible
@@ -874,24 +853,16 @@ class ApiClient {
     const token = await this.getStoredToken();
     if (!token) {
       results.recommendation =
-        'No API token configured. Set EXPO_PUBLIC_GARAGE61_API_TOKEN in .env file.';
+        'Authentication not configured. Please contact support if this issue persists.';
       return results;
     }
 
     // Always using Firebase proxy now
     try {
-      const testUrl = Platform.select({
-        web: FIREBASE_PROXY_URL,
-        default: FIREBASE_HOSTING_URL,
-      });
       console.log(
-        `Testing Firebase proxy connection (${Platform.OS}): ${testUrl}/me`,
+        `Testing Firebase proxy connection: ${FIREBASE_HOSTING_URL}/me`,
       );
-      await axios.get(testUrl + '/me', {
-        headers:
-          token !== 'firebase-proxy-auth'
-            ? {Authorization: `Bearer ${token}`}
-            : {},
+      await axios.get(FIREBASE_HOSTING_URL + '/me', {
         timeout: 5000,
       });
       results.firebaseProxy = true;

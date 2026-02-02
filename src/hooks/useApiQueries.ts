@@ -1,5 +1,5 @@
-import {useQuery} from '@tanstack/react-query';
 import {apiClient} from '@src/utils/api';
+import {useQuery} from '@tanstack/react-query';
 
 // Query keys for consistent cache management
 export const queryKeys = {
@@ -25,7 +25,7 @@ export const useUser = () => {
       const token = await apiClient.getStoredToken();
       if (!token) {
         throw new Error(
-          'API token not configured - please set EXPO_PUBLIC_GARAGE61_API_TOKEN in .env',
+          'Authentication not configured - please contact support if this issue persists',
         );
       }
       // For Firebase proxy auth, we can proceed since the function handles authentication

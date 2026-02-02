@@ -1,16 +1,16 @@
+import {RacingTheme} from '@src/theme';
+import {useAuth} from '@src/utils/authContext';
 import React, {useEffect, useState} from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
   ActivityIndicator,
   Animated,
   Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
-import {useAuth} from '@src/utils/authContext';
-import {RacingCard, RacingButton, StatusBadge} from './RacingUI';
-import {RacingTheme} from '@src/theme';
+import {RacingButton, RacingCard, StatusBadge} from './RacingUI';
 // Web-specific types
 declare const window: any;
 
@@ -71,9 +71,10 @@ const UserProfile: React.FC = React.memo(() => {
       <View style={styles.mainContainer}>
         <View style={styles.fullHeightContainer}>
           <View style={styles.centerContainer}>
-            <Text style={styles.errorText}>API TOKEN REQUIRED</Text>
+            <Text style={styles.errorText}>AUTHENTICATION REQUIRED</Text>
             <Text style={styles.errorSubtext}>
-              Please configure your Garage 61 API token in Settings
+              Unable to connect to the service. Please contact support if this
+              issue persists.
             </Text>
             <RacingButton
               title='OPEN SETTINGS'

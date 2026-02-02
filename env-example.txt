@@ -1,8 +1,6 @@
-# Garage 61 API Configuration
-# Copy this file to .env.local and fill in your actual values
+# Firebase Functions Configuration
+# The Garage 61 API token is now configured server-side in Firebase Functions
+# No client-side configuration is needed for authentication
 
-# Your personal access token from Garage 61
-GARAGE61_API_TOKEN=your_token_here
-
-# API base URL (usually doesn't need to change)
-GARAGE61_API_BASE_URL=https://garage61.net/api/v1
+# If you need to configure anything, contact the development team
+# All API calls now go through Firebase proxy functions
