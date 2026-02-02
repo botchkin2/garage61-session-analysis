@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, {AxiosRequestConfig} from 'axios';
 import {defineSecret} from 'firebase-functions/params';
 import {onRequest} from 'firebase-functions/v2/https';
 
@@ -37,42 +37,96 @@ export const garage61Proxy = onRequest(
     }
 
     try {
-      // Get API token
+      // Get API token from Firebase secret parameter
       const apiToken = garage61ApiToken.value();
+
       if (!apiToken) {
-        res.status(500).json({error: 'API token not configured'});
+        console.error(
+          'GARAGE61_API_TOKEN not configured in Firebase Functions',
+        );
+        res.status(500).json({
+          error: 'API token not configured',
+          message:
+            'Please configure the Garage 61 API token as a secret parameter',
+        });
         return;
       }
 
-      // Build target URL
+      // Construct the target URL by stripping the /api/garage61 prefix from req.path
       const apiPath = req.path.replace(/^\/api\/garage61/, '');
       const targetUrl = `https://garage61.net/api/v1${apiPath}`;
 
-      // Make request to garage61.net
-      const response = await axios({
+      // Prepare axios config
+      const axiosConfig: AxiosRequestConfig = {
         method: req.method as any,
         url: targetUrl,
         headers: {
           Authorization: `Bearer ${apiToken}`,
-          'Content-Type': req.headers['content-type'] || 'application/json',
+          'Content-Type': 'application/json',
+          // Forward other headers but exclude host and some Firebase-specific ones
+          ...Object.fromEntries(
+            Object.entries(req.headers).filter(
+              ([key]) =>
+                ![
+                  'host',
+                  'connection',
+                  'keep-alive',
+                  'proxy-authenticate',
+                  'proxy-authorization',
+                  'te',
+                  'trailers',
+                  'transfer-encoding',
+                  'upgrade',
+                ].includes(key.toLowerCase()),
+            ),
+          ),
         },
         params: req.query,
-        data: req.body,
-        timeout: 30000,
-      });
+        timeout: 30000, // 30 second timeout
+      };
 
-      // Forward all response headers
-      Object.keys(response.headers).forEach(key => {
-        res.set(key, response.headers[key] as string);
-      });
+      // Add body for non-GET requests
+      if (req.method !== 'GET' && req.method !== 'HEAD' && req.body) {
+        axiosConfig.data = req.body;
+      }
 
-      // Send response
-      res.status(response.status).send(response.data);
-    } catch (error: any) {
-      if (error.response) {
-        res.status(error.response.status).send(error.response.data);
+      console.log(`Proxying ${req.method} ${req.path} -> ${targetUrl}`);
+
+      const response = await axios(axiosConfig);
+
+      // Forward the response - handle CSV responses as text, others as JSON
+      const contentType = response.headers['content-type'] || '';
+      if (
+        contentType.includes('text/csv') ||
+        contentType.includes('application/csv')
+      ) {
+        // For CSV responses, return raw text data
+        res.set('Content-Type', contentType);
+        res.status(response.status).send(response.data);
       } else {
-        res.status(502).json({error: 'Bad Gateway'});
+        // For JSON and other responses, return as JSON
+        res.status(response.status).json(response.data);
+      }
+    } catch (error: any) {
+      console.error('Proxy error:', error);
+
+      if (error.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        res.status(error.response.status).json(error.response.data);
+      } else if (error.request) {
+        // The request was made but no response was received
+        res.status(502).json({
+          error: 'Bad Gateway',
+          message: 'No response received from Garage 61 API',
+          details: error.message,
+        });
+      } else {
+        // Something happened in setting up the request that triggered an Error
+        res.status(500).json({
+          error: 'Internal Server Error',
+          message: error.message,
+        });
       }
     }
   },
