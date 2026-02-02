@@ -1,20 +1,21 @@
-import React, {useState, useEffect, useRef, useCallback, useMemo} from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Dimensions,
-  TouchableOpacity,
-} from 'react-native';
-import {Lap} from '@src/types';
 import {useTelemetry} from '@src/hooks/useApiQueries';
+import {Lap} from '@src/types';
 import {findClosestIndex} from '@src/utils/binarySearch';
-import {SERIES_BASE_COLORS, LAP_COLOR_SCHEMES} from '@src/utils/colors';
+import {LAP_COLOR_SCHEMES, SERIES_BASE_COLORS} from '@src/utils/colors';
 import {
   parseTelemetryData,
   type TimeSeriesData,
 } from '@src/utils/dataProcessing';
 import {convertLatLongToXY, type TrackMapData} from '@src/utils/geometry';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {
+  Dimensions,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import Svg, {Path} from 'react-native-svg';
 
 const {width} = Dimensions.get('window');
 
@@ -807,11 +808,11 @@ export const MultiLapTimeSeriesChart: React.FC<
                     <View
                       key={`${lapId}-${seriesKey}`}
                       style={styles.svgContainer}>
-                      <svg
+                      <Svg
                         width={chartWidth}
                         height={chartHeight}
                         style={styles.svgChart}>
-                        <path
+                        <Path
                           d={pathData}
                           stroke={series.color}
                           strokeWidth={2}
@@ -820,7 +821,7 @@ export const MultiLapTimeSeriesChart: React.FC<
                           strokeLinejoin='round'
                           opacity={isReferenceLap ? 1.0 : 0.7}
                         />
-                      </svg>
+                      </Svg>
                     </View>
                   );
                 });

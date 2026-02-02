@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import Svg, {Circle, Path} from 'react-native-svg';
 import {
   LapTelemetryLoader,
   MultiLapTimeSeriesChart,
@@ -506,12 +507,12 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
                 return (
                   <View style={styles.sharedTrackMapContainer}>
                     <View style={styles.sharedTrackMap}>
-                      <svg
+                      <Svg
                         width={250}
                         height={180}
                         style={styles.trackMapSvg}
                         viewBox='0 0 250 180'>
-                        <path
+                        <Path
                           d={(() => {
                             if (!trackMap || trackMap.coordinates.length < 2) {
                               return '';
@@ -573,7 +574,7 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
                           const y = currentCoord.y * 160 + 10;
 
                           return (
-                            <circle
+                            <Circle
                               cx={x}
                               cy={y}
                               r={5}
@@ -583,7 +584,7 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
                             />
                           );
                         })()}
-                      </svg>
+                      </Svg>
                     </View>
                   </View>
                 );

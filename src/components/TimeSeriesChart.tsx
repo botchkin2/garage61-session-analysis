@@ -1,12 +1,13 @@
-import React, {useState, useEffect, useRef, useCallback} from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Dimensions,
-  TouchableOpacity,
-} from 'react-native';
 import axios from 'axios';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
+import {
+  Dimensions,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import Svg, {Circle, Path} from 'react-native-svg';
 
 const {width} = Dimensions.get('window');
 
@@ -752,13 +753,13 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
       {showTrackMap && processedData?.trackMap && (
         <View style={styles.trackMapContainer}>
           <View style={styles.trackMap}>
-            <svg
+            <Svg
               width={200}
               height={150}
               style={styles.trackMapSvg}
               viewBox='0 0 200 150'>
               {/* Track path */}
-              <path
+              <Path
                 d={(() => {
                   if (
                     !processedData.trackMap ||
@@ -822,7 +823,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
                 const y = currentCoord.y * 130 + 10;
 
                 return (
-                  <circle
+                  <Circle
                     cx={x}
                     cy={y}
                     r={4}
@@ -832,7 +833,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
                   />
                 );
               })()}
-            </svg>
+            </Svg>
           </View>
         </View>
       )}
@@ -903,11 +904,11 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
                     <View
                       key={`series-${series.key}`}
                       style={styles.svgContainer}>
-                      <svg
+                      <Svg
                         width={chartWidth}
                         height={chartHeight}
                         style={styles.svgChart}>
-                        <path
+                        <Path
                           d={pathData}
                           stroke={series.color}
                           strokeWidth={2}
@@ -915,7 +916,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
                           strokeLinecap='round'
                           strokeLinejoin='round'
                         />
-                      </svg>
+                      </Svg>
                     </View>
                   );
                 });
