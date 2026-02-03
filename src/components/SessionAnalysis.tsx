@@ -225,7 +225,9 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
         const mean = stats.sum / stats.count;
         const variance = stats.sumSquares / stats.count - mean * mean;
         const stdDev = Math.sqrt(variance);
-        const coefficientOfVariation = stdDev / mean; // Lower is better consistency
+        // Scale inconsistency so that 0.5s standard deviation = 100% inconsistency
+        // This makes 0.5s variation highly visible regardless of sector length
+        const scaledInconsistency = (stdDev / 0.5) * 100; // 0.5s = 100% benchmark
 
         // Find best time for this sector
         const bestTime = Math.min(...stats.times);
@@ -235,14 +237,19 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
           mean,
           variance,
           stdDev,
-          coefficientOfVariation,
+          coefficientOfVariation: scaledInconsistency / 100, // Keep original CV for compatibility
+          scaledInconsistency, // New scaled metric (0.5s = 100%)
           bestTime,
           lapCount: stats.count,
           times: stats.times,
           potentialImprovement: (mean - bestTime) * stats.count, // Total time lost due to inconsistency
         };
       })
-      .sort((a, b) => b.coefficientOfVariation - a.coefficientOfVariation); // Sort by most inconsistent first
+      .sort(
+        (a, b) =>
+          (b.scaledInconsistency || b.coefficientOfVariation * 100) -
+          (a.scaledInconsistency || a.coefficientOfVariation * 100),
+      ); // Sort by most inconsistent first
 
     return sectorVariances;
   };

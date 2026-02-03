@@ -82,6 +82,9 @@ export interface Lap {
   precipitation?: number;
   sectors?: SectorTime[];
   fuel?: FuelInfo;
+  fuelLevel?: number;
+  fuelUsed?: number;
+  fuelAdded?: number;
   incidents?: Incident[];
   telemetry?: TelemetryInfo;
 }

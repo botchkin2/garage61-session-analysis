@@ -368,6 +368,49 @@ const LapComparisonSection: React.FC<LapComparisonSectionProps> = ({
                                     No sector data available
                                   </Text>
                                 )}
+
+                                {/* Fuel Information */}
+                                {(lap.fuelLevel !== undefined ||
+                                  lap.fuelUsed !== undefined ||
+                                  (lap.fuelAdded !== undefined &&
+                                    lap.fuelAdded > 0)) && (
+                                  <View style={styles.mobileFuelBreakdown}>
+                                    <Text style={styles.mobileExpandedTitle}>
+                                      FUEL INFORMATION
+                                    </Text>
+                                    {lap.fuelLevel !== undefined && (
+                                      <View style={styles.mobileFuelRow}>
+                                        <Text style={styles.mobileFuelLabel}>
+                                          FUEL LEVEL
+                                        </Text>
+                                        <Text style={styles.mobileFuelValue}>
+                                          {lap.fuelLevel.toFixed(3)}L
+                                        </Text>
+                                      </View>
+                                    )}
+                                    {lap.fuelUsed !== undefined && (
+                                      <View style={styles.mobileFuelRow}>
+                                        <Text style={styles.mobileFuelLabel}>
+                                          FUEL USED
+                                        </Text>
+                                        <Text style={styles.mobileFuelValue}>
+                                          {lap.fuelUsed.toFixed(3)}L
+                                        </Text>
+                                      </View>
+                                    )}
+                                    {lap.fuelAdded !== undefined &&
+                                      lap.fuelAdded > 0 && (
+                                        <View style={styles.mobileFuelRow}>
+                                          <Text style={styles.mobileFuelLabel}>
+                                            FUEL ADDED
+                                          </Text>
+                                          <Text style={styles.mobileFuelValue}>
+                                            +{lap.fuelAdded.toFixed(3)}L
+                                          </Text>
+                                        </View>
+                                      )}
+                                  </View>
+                                )}
                               </RacingCard>
                             )}
                           </View>
@@ -609,6 +652,57 @@ const LapComparisonSection: React.FC<LapComparisonSectionProps> = ({
                                     </Text>
                                   )}
                                 </View>
+
+                                {/* Fuel Information for Desktop */}
+                                {(lap.fuelLevel !== undefined ||
+                                  lap.fuelUsed !== undefined ||
+                                  (lap.fuelAdded !== undefined &&
+                                    lap.fuelAdded > 0)) && (
+                                  <View style={styles.expandedFuelSection}>
+                                    <Text style={styles.expandedSectorTitle}>
+                                      FUEL INFORMATION
+                                    </Text>
+                                    <View style={styles.expandedFuelGrid}>
+                                      {lap.fuelLevel !== undefined && (
+                                        <View style={styles.expandedFuelItem}>
+                                          <Text
+                                            style={styles.expandedFuelLabel}>
+                                            FUEL LEVEL
+                                          </Text>
+                                          <Text
+                                            style={styles.expandedFuelValue}>
+                                            {lap.fuelLevel.toFixed(3)}L
+                                          </Text>
+                                        </View>
+                                      )}
+                                      {lap.fuelUsed !== undefined && (
+                                        <View style={styles.expandedFuelItem}>
+                                          <Text
+                                            style={styles.expandedFuelLabel}>
+                                            FUEL USED
+                                          </Text>
+                                          <Text
+                                            style={styles.expandedFuelValue}>
+                                            {lap.fuelUsed.toFixed(3)}L
+                                          </Text>
+                                        </View>
+                                      )}
+                                      {lap.fuelAdded !== undefined &&
+                                        lap.fuelAdded > 0 && (
+                                          <View style={styles.expandedFuelItem}>
+                                            <Text
+                                              style={styles.expandedFuelLabel}>
+                                              FUEL ADDED
+                                            </Text>
+                                            <Text
+                                              style={styles.expandedFuelValue}>
+                                              +{lap.fuelAdded.toFixed(3)}L
+                                            </Text>
+                                          </View>
+                                        )}
+                                    </View>
+                                  </View>
+                                )}
                               </View>
                             )}
 
@@ -944,13 +1038,13 @@ const styles = {
     color: RacingTheme.colors.secondary,
   },
   tableTimeCell: {
-    flex: 2, // Give more space than regular cells
+    flex: 1, // Minimal space for lap time column
     flexDirection: 'row' as const,
     alignItems: 'center',
     justifyContent: 'flex-start',
     paddingHorizontal: RacingTheme.spacing.sm,
     paddingVertical: RacingTheme.spacing.xs,
-    gap: RacingTheme.spacing.sm, // Add gap between elements
+    gap: 1, // Ultra minimal gap between elements
   },
   tableTimeCellExpanded: {
     backgroundColor: RacingTheme.colors.surfaceElevated,
@@ -1058,6 +1152,69 @@ const styles = {
     fontSize: RacingTheme.typography.caption,
     color: RacingTheme.colors.textSecondary,
     fontStyle: 'italic',
+  },
+  // Mobile Fuel Styles
+  mobileFuelBreakdown: {
+    gap: RacingTheme.spacing.xs,
+    marginTop: RacingTheme.spacing.sm,
+    paddingLeft: RacingTheme.spacing.sm,
+  },
+  mobileFuelRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: RacingTheme.spacing.xs,
+    paddingHorizontal: RacingTheme.spacing.sm,
+    backgroundColor: RacingTheme.colors.surface,
+    borderRadius: RacingTheme.borderRadius.sm,
+  },
+  mobileFuelLabel: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.textSecondary,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+  },
+  mobileFuelValue: {
+    fontSize: RacingTheme.typography.body,
+    fontWeight: RacingTheme.typography.medium as any,
+    color: RacingTheme.colors.text,
+    fontFamily: RacingTheme.typography.mono,
+  },
+  // Desktop Fuel Styles
+  expandedFuelSection: {
+    paddingTop: RacingTheme.spacing.sm,
+    paddingHorizontal: RacingTheme.spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: RacingTheme.colors.surfaceElevated,
+    marginTop: RacingTheme.spacing.sm,
+  },
+  expandedFuelGrid: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: RacingTheme.spacing.sm,
+    marginTop: RacingTheme.spacing.sm,
+  },
+  expandedFuelItem: {
+    backgroundColor: RacingTheme.colors.surfaceElevated,
+    borderRadius: RacingTheme.borderRadius.sm,
+    padding: RacingTheme.spacing.sm,
+    alignItems: 'center',
+    minWidth: 120,
+  },
+  expandedFuelLabel: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.primary,
+    fontFamily: RacingTheme.typography.mono,
+    fontWeight: RacingTheme.typography.bold as any,
+    marginBottom: RacingTheme.spacing.xs,
+    textAlign: 'center' as const,
+  },
+  expandedFuelValue: {
+    fontSize: RacingTheme.typography.body,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.text,
+    fontFamily: RacingTheme.typography.mono,
+    textAlign: 'center' as const,
   },
 };
 

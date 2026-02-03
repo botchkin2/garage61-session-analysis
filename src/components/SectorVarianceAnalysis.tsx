@@ -9,6 +9,7 @@ interface SectorVariance {
   variance: number;
   stdDev: number;
   coefficientOfVariation: number;
+  scaledInconsistency?: number; // New scaled metric (0.5s stdDev = 100%)
   bestTime: number;
   lapCount: number;
   times: number[];
@@ -53,7 +54,10 @@ const SectorVarianceAnalysis: React.FC<SectorVarianceAnalysisProps> = ({
               </View>
               <View style={styles.varianceHighlightStats}>
                 <Text style={styles.varianceHighlightValue}>
-                  {(sectorVariances[0].coefficientOfVariation * 100).toFixed(1)}
+                  {(
+                    sectorVariances[0].scaledInconsistency ||
+                    sectorVariances[0].coefficientOfVariation * 100
+                  ).toFixed(1)}
                   %
                 </Text>
                 <Text style={styles.varianceHighlightLabel}>
@@ -76,7 +80,8 @@ const SectorVarianceAnalysis: React.FC<SectorVarianceAnalysisProps> = ({
             SECTOR CONSISTENCY RANKINGS
           </Text>
           <Text style={styles.varianceRankingsSubtitle}>
-            Lower % = more consistent • Higher % = where to focus
+            Lower % = more consistent • 100% = 0.5s spread • Higher % = where to
+            focus
           </Text>
 
           {isMobile ? (
@@ -94,7 +99,11 @@ const SectorVarianceAnalysis: React.FC<SectorVarianceAnalysisProps> = ({
                       S{sector.sector + 1}
                     </Text>
                     <Text style={styles.mobileVarianceValue}>
-                      {(sector.coefficientOfVariation * 100).toFixed(1)}%
+                      {(
+                        sector.scaledInconsistency ||
+                        sector.coefficientOfVariation * 100
+                      ).toFixed(1)}
+                      %
                     </Text>
                   </View>
                   <View style={styles.mobileVarianceDetails}>
@@ -150,7 +159,11 @@ const SectorVarianceAnalysis: React.FC<SectorVarianceAnalysisProps> = ({
                         styles.varianceTableCell,
                         index === 0 && styles.varianceTableCellWorst,
                       ]}>
-                      {(sector.coefficientOfVariation * 100).toFixed(1)}%
+                      {(
+                        sector.scaledInconsistency ||
+                        sector.coefficientOfVariation * 100
+                      ).toFixed(1)}
+                      %
                     </Text>
                     <Text
                       style={[
