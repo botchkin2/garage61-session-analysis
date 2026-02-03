@@ -11,6 +11,7 @@ interface SectorVariance {
   coefficientOfVariation: number;
   scaledInconsistency?: number; // New scaled metric (0.5s stdDev = 100%)
   bestTime: number;
+  spread: number;
   lapCount: number;
   times: number[];
   potentialImprovement: number;
@@ -108,7 +109,7 @@ const SectorVarianceAnalysis: React.FC<SectorVarianceAnalysisProps> = ({
                   </View>
                   <View style={styles.mobileVarianceDetails}>
                     <Text style={styles.mobileVarianceDetail}>
-                      Spread: {sector.stdDev.toFixed(3)}s
+                      Spread: {sector.spread.toFixed(3)}s
                     </Text>
                     <Text style={styles.mobileVarianceDetail}>
                       Avg: {formatLapTime(sector.mean)}
@@ -170,7 +171,7 @@ const SectorVarianceAnalysis: React.FC<SectorVarianceAnalysisProps> = ({
                         styles.varianceTableCell,
                         index === 0 && styles.varianceTableCellWorst,
                       ]}>
-                      {sector.stdDev.toFixed(3)}s
+                      {sector.spread.toFixed(3)}s
                     </Text>
                     <Text
                       style={[

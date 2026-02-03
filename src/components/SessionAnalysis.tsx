@@ -231,6 +231,8 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
 
         // Find best time for this sector
         const bestTime = Math.min(...stats.times);
+        // Calculate spread as max - min range
+        const spread = Math.max(...stats.times) - Math.min(...stats.times);
 
         return {
           sector: sectorNum,
@@ -240,6 +242,7 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
           coefficientOfVariation: scaledInconsistency / 100, // Keep original CV for compatibility
           scaledInconsistency, // New scaled metric (0.5s = 100%)
           bestTime,
+          spread,
           lapCount: stats.count,
           times: stats.times,
           potentialImprovement: (mean - bestTime) * stats.count, // Total time lost due to inconsistency
