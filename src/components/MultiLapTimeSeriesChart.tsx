@@ -71,17 +71,21 @@ export const LapTelemetryLoader: React.FC<{
     data: ProcessedLapData | null,
     error?: any,
   ) => void;
+  onLapLoadingStart?: (lapId: string) => void;
   lapIndex: number;
-}> = ({lap, onLapCompleted, lapIndex}) => {
+}> = ({lap, onLapCompleted, onLapLoadingStart, lapIndex}) => {
   // Stagger CSV loading to prevent overwhelming the server
   const [canLoad, setCanLoad] = useState(false);
 
   // Delay loading based on lap index to prevent all requests at once
   useEffect(() => {
     const delay = lapIndex * 100; // 100ms delay between each lap
-    const timer = setTimeout(() => setCanLoad(true), delay);
+    const timer = setTimeout(() => {
+      setCanLoad(true);
+      onLapLoadingStart?.(lap.id);
+    }, delay);
     return () => clearTimeout(timer);
-  }, [lapIndex]);
+  }, [lapIndex, lap.id, onLapLoadingStart]);
 
   const query = useTelemetry(lap.id, {enabled: canLoad});
   const hasCompleted = useRef(false);
@@ -227,6 +231,11 @@ export const MultiLapTimeSeriesChart: React.FC<
     : internalShowTrackMap;
   const animationRef = useRef<NodeJS.Timeout | null>(null);
   const referenceLapDataRef = useRef<ProcessedLapData | null>(null);
+  /** Latest playback position (updated every tick). Used so we don't need state for position. */
+  const positionRef = useRef<number>(0);
+  /** Stable reference to position change callback to avoid dependency loops */
+  const onPositionChangeRef = useRef(onPositionChange);
+  onPositionChangeRef.current = onPositionChange;
   const visibleDataCache = useRef<{
     position: number;
     zoomLevel: number;
@@ -336,24 +345,44 @@ export const MultiLapTimeSeriesChart: React.FC<
 
   // Helper functions for position management
   const getCurrentPosition = useCallback(
-    (): number => externalCurrentPosition ?? visibleData.startIdx,
-    [externalCurrentPosition, visibleData.startIdx],
+    (): number => externalCurrentPosition ?? positionRef.current,
+    [externalCurrentPosition],
   );
 
   const updatePosition = useCallback(
     (newPosition: number) => {
-      if (referenceLapDataRef.current) {
-        updateVisibleData(referenceLapDataRef.current.raw, newPosition);
+      const refData = referenceLapDataRef.current;
+      if (refData) {
+        const dataPercentage = 15 - (zoomLevel - 1) * 3.25; // 15% at zoom 1, 2% at zoom 5
+        const pointsToShow = Math.max(
+          50,
+          Math.floor(refData.totalPoints * (dataPercentage / 100)),
+        );
+
+        const startIdx = Math.max(
+          0,
+          Math.min(refData.totalPoints - pointsToShow, Math.floor(newPosition)),
+        );
+        const endIdx = Math.min(
+          refData.totalPoints - 1,
+          startIdx + pointsToShow - 1,
+        );
+        const visiblePoints = refData.raw.slice(startIdx, endIdx + 1);
+
+        setVisibleData({data: visiblePoints, startIdx, endIdx});
       }
+
+      positionRef.current = newPosition;
+
       // Update external position if callback provided
-      if (onPositionChange) {
-        onPositionChange(newPosition);
+      if (onPositionChangeRef.current) {
+        onPositionChangeRef.current(newPosition);
       }
     },
-    [updateVisibleData, onPositionChange],
+    [zoomLevel],
   );
 
-  // Start playback
+  // Start playback (only for internal controls)
   const startPlayback = useCallback(() => {
     if (isPlaying || !referenceLapData) {
       return;
@@ -363,45 +392,7 @@ export const MultiLapTimeSeriesChart: React.FC<
       return;
     }
     setInternalIsPlaying(true);
-
-    const animate = () => {
-      const currentPos = getCurrentPosition();
-      // Calculate real-time advancement rate based on lap time and sample count
-      const baseAdvancementRate = calculateAdvancementRate(
-        processedData.totalPoints,
-        laps[0]?.lapTime,
-      );
-      let advancement = baseAdvancementRate;
-      advancement *= playbackSpeed;
-
-      const refData = referenceLapDataRef.current;
-      if (!refData) {
-        return;
-      }
-
-      let nextPos = currentPos + advancement;
-      if (nextPos >= refData.totalPoints) {
-        nextPos = 0; // Loop back to start
-      } else if (nextPos < 0) {
-        nextPos = refData.totalPoints - 1; // Loop back to end
-      }
-
-      updatePosition(nextPos);
-    };
-
-    // Use variable interval based on speed
-    const animationInterval = 5;
-
-    animationRef.current = setInterval(animate, animationInterval);
-  }, [
-    isPlaying,
-    playbackSpeed,
-    getCurrentPosition,
-    updatePosition,
-    referenceLapData,
-    calculateAdvancementRate,
-    laps,
-  ]);
+  }, [isPlaying, referenceLapData, useExternalControls]);
 
   // Stop playback
   const stopPlayback = useCallback(() => {
@@ -420,24 +411,28 @@ export const MultiLapTimeSeriesChart: React.FC<
     updatePosition(0);
   }, [stopPlayback, updatePosition]);
 
-  // Restart animation when speed changes during playback
+  // Handle playback state changes (for external controls)
   useEffect(() => {
+    // Stop any existing animation
+    if (animationRef.current) {
+      clearInterval(animationRef.current);
+      animationRef.current = null;
+    }
+
     if (isPlaying && referenceLapDataRef.current) {
-      // Stop current animation
-      if (animationRef.current) {
-        clearInterval(animationRef.current);
-      }
-
-      // Restart with new speed
+      // Start animation
       const animate = () => {
-        const currentPos = getCurrentPosition();
-        let advancement = 1.767; // Base advancement rate
-        advancement *= playbackSpeed;
-
         const refData = referenceLapDataRef.current;
         if (!refData) {
           return;
         }
+
+        const currentPos = externalCurrentPosition ?? positionRef.current;
+        const baseAdvancementRate = calculateAdvancementRate(
+          refData.totalPoints,
+          laps[0]?.lapTime,
+        );
+        let advancement = baseAdvancementRate * playbackSpeed;
 
         let nextPos = currentPos + advancement;
         if (nextPos >= refData.totalPoints) {
@@ -446,37 +441,105 @@ export const MultiLapTimeSeriesChart: React.FC<
           nextPos = refData.totalPoints - 1; // Loop back to end
         }
 
-        updatePosition(nextPos);
+        positionRef.current = nextPos;
+
+        // Update visible data only if window actually changes
+        const dataPercentage = 15 - (zoomLevel - 1) * 3.25; // 15% at zoom 1, 2% at zoom 5
+        const pointsToShow = Math.max(
+          50,
+          Math.floor(refData.totalPoints * (dataPercentage / 100)),
+        );
+
+        const startIdx = Math.max(
+          0,
+          Math.min(refData.totalPoints - pointsToShow, Math.floor(nextPos)),
+        );
+        const endIdx = Math.min(
+          refData.totalPoints - 1,
+          startIdx + pointsToShow - 1,
+        );
+
+        // Only update visible data if the window actually changed
+        if (
+          !visibleDataCache.current ||
+          visibleDataCache.current.startIdx !== startIdx ||
+          visibleDataCache.current.endIdx !== endIdx
+        ) {
+          const visiblePoints = refData.raw.slice(startIdx, endIdx + 1);
+          visibleDataCache.current = {
+            position: nextPos,
+            zoomLevel,
+            totalPoints: refData.totalPoints,
+            data: visiblePoints,
+            startIdx,
+            endIdx,
+          };
+          setVisibleData({data: visiblePoints, startIdx, endIdx});
+        }
+
+        if (onPositionChangeRef.current) {
+          onPositionChangeRef.current(nextPos);
+        }
       };
 
       // Use variable interval based on speed
       const animationInterval = Math.max(10, 30 / Math.abs(playbackSpeed));
-
       animationRef.current = setInterval(animate, animationInterval);
     }
-  }, [
-    playbackSpeed,
-    isPlaying,
-    // Don't depend on referenceLapData - only check if it exists when starting animation
-    getCurrentPosition,
-    updatePosition,
-    calculateAdvancementRate,
-    laps,
-  ]);
+
+    return () => {
+      if (animationRef.current) {
+        clearInterval(animationRef.current);
+        animationRef.current = null;
+      }
+    };
+  }, [isPlaying, playbackSpeed, zoomLevel, externalCurrentPosition]);
 
   // Update visible data when reference lap data first loads (initial position = 0)
   useEffect(() => {
-    if (referenceLapData) {
-      updateVisibleData(referenceLapData.raw, 0);
-    }
-  }, [referenceLapData, updateVisibleData]);
+    const refData = referenceLapDataRef.current;
+    if (refData) {
+      const dataPercentage = 15 - (zoomLevel - 1) * 3.25; // 15% at zoom 1, 2% at zoom 5
+      const pointsToShow = Math.max(
+        50,
+        Math.floor(refData.totalPoints * (dataPercentage / 100)),
+      );
 
-  // Update visible data when zoom level changes (initial position = 0)
-  useEffect(() => {
-    if (referenceLapDataRef.current) {
-      updateVisibleData(referenceLapDataRef.current.raw, 0);
+      const startIdx = 0;
+      const endIdx = Math.min(
+        refData.totalPoints - 1,
+        startIdx + pointsToShow - 1,
+      );
+      const visiblePoints = refData.raw.slice(startIdx, endIdx + 1);
+
+      setVisibleData({data: visiblePoints, startIdx, endIdx});
     }
-  }, [zoomLevel, updateVisibleData]);
+  }, [referenceLapData?.totalPoints, zoomLevel]);
+
+  // Update visible data when zoom level changes (keep current position)
+  useEffect(() => {
+    const refData = referenceLapDataRef.current;
+    if (refData) {
+      const currentPos = externalCurrentPosition ?? positionRef.current;
+      const dataPercentage = 15 - (zoomLevel - 1) * 3.25; // 15% at zoom 1, 2% at zoom 5
+      const pointsToShow = Math.max(
+        50,
+        Math.floor(refData.totalPoints * (dataPercentage / 100)),
+      );
+
+      const startIdx = Math.max(
+        0,
+        Math.min(refData.totalPoints - pointsToShow, Math.floor(currentPos)),
+      );
+      const endIdx = Math.min(
+        refData.totalPoints - 1,
+        startIdx + pointsToShow - 1,
+      );
+      const visiblePoints = refData.raw.slice(startIdx, endIdx + 1);
+
+      setVisibleData({data: visiblePoints, startIdx, endIdx});
+    }
+  }, [zoomLevel, externalCurrentPosition]);
 
   // Update visible data when zoom changes during playback
   useEffect(() => {
@@ -488,7 +551,7 @@ export const MultiLapTimeSeriesChart: React.FC<
 
       // Restart with new speed
       const animate = () => {
-        const currentPos = getCurrentPosition();
+        const currentPos = externalCurrentPosition ?? positionRef.current;
         let advancement = 1.767; // Base advancement rate
         advancement *= playbackSpeed;
 
@@ -504,7 +567,13 @@ export const MultiLapTimeSeriesChart: React.FC<
           nextPos = refData.totalPoints - 1; // Loop back to end
         }
 
-        updatePosition(nextPos);
+        positionRef.current = nextPos;
+        if (referenceLapDataRef.current) {
+          updateVisibleData(referenceLapDataRef.current.raw, nextPos);
+        }
+        if (onPositionChangeRef.current) {
+          onPositionChangeRef.current(nextPos);
+        }
       };
 
       // Use variable interval based on speed
@@ -515,9 +584,10 @@ export const MultiLapTimeSeriesChart: React.FC<
   }, [
     zoomLevel,
     isPlaying,
-    // Don't depend on referenceLapData or playbackSpeed - only restart on zoom changes during playback
-    getCurrentPosition,
-    updatePosition,
+    playbackSpeed,
+    referenceLapData,
+    externalCurrentPosition,
+    onPositionChange,
   ]);
 
   // Cleanup on unmount
@@ -548,8 +618,7 @@ export const MultiLapTimeSeriesChart: React.FC<
       {isLoading && (
         <View style={styles.loadingOverlay}>
           <Text style={styles.loadingText}>
-            Loading telemetry data... ({laps.length - pendingCount}/
-            {laps.length} loaded)
+            Loading telemetry data... ({lapDataMap.size}/{laps.length} loaded)
           </Text>
         </View>
       )}

@@ -69,6 +69,19 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
   );
   const [dataLoading, setDataLoading] = useState(true);
 
+  // Enhanced loading progress tracking
+  const [loadingProgress, setLoadingProgress] = useState<{
+    loadedCount: number;
+    totalCount: number;
+    currentlyLoading: string[];
+    completedLaps: string[];
+  }>({
+    loadedCount: 0,
+    totalCount: 0,
+    currentlyLoading: [],
+    completedLaps: [],
+  });
+
   // Memoize query parameters to ensure stable reference for React Query deduplication
   const lapsQueryParams = useMemo(
     () =>
@@ -123,18 +136,20 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
     return () => subscription?.remove();
   }, []);
 
-  // Get selected laps (needs to be before early return for useEffect)
-  const selectedLaps = laps
-    .filter(lap => internalSelectedLapIds.has(lap.id))
-    .sort((a, b) => {
-      let comparison = 0;
-      if (sortBy === 'time') {
-        comparison = a.lapTime - b.lapTime;
-      } else if (sortBy === 'lapNumber') {
-        comparison = a.lapNumber - b.lapNumber;
-      }
-      return sortDirection === 'asc' ? comparison : -comparison;
-    });
+  // Get selected laps (memoized to prevent infinite re-renders)
+  const selectedLaps = useMemo(() => {
+    return laps
+      .filter(lap => internalSelectedLapIds.has(lap.id))
+      .sort((a, b) => {
+        let comparison = 0;
+        if (sortBy === 'time') {
+          comparison = a.lapTime - b.lapTime;
+        } else if (sortBy === 'lapNumber') {
+          comparison = a.lapNumber - b.lapNumber;
+        }
+        return sortDirection === 'asc' ? comparison : -comparison;
+      });
+  }, [laps, internalSelectedLapIds, sortBy, sortDirection]);
 
   // Shared position tracking for track map
   const getCurrentPosition = useCallback(
@@ -151,20 +166,59 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
     (lapId: string, data: ProcessedLapData | null) => {
       if (data) {
         setLapDataMap(prev => {
+          // Only create new Map if this lap wasn't already loaded
+          if (prev.has(lapId)) {
+            return prev; // No change needed
+          }
           const newMap = new Map(prev);
           newMap.set(lapId, data);
           return newMap;
         });
       }
+      // Update loading progress
+      setLoadingProgress(prev => ({
+        ...prev,
+        loadedCount: prev.loadedCount + 1,
+        currentlyLoading: prev.currentlyLoading.filter(id => id !== lapId),
+        completedLaps: [...prev.completedLaps, lapId],
+      }));
     },
     [],
   );
 
-  // Check if all lap data is loaded
-  useEffect(() => {
+  // Handler for when lap loading starts
+  const handleLapLoadingStart = useCallback((lapId: string) => {
+    setLoadingProgress(prev => ({
+      ...prev,
+      currentlyLoading: [...prev.currentlyLoading, lapId],
+    }));
+  }, []);
+
+  // Memoize loading state calculations to prevent infinite re-renders
+  const loadingState = useMemo(() => {
     const allLapsLoaded = selectedLaps.every(lap => lapDataMap.has(lap.id));
-    setDataLoading(!allLapsLoaded);
+    const loadedCount = selectedLaps.filter(lap =>
+      lapDataMap.has(lap.id),
+    ).length;
+    return {
+      allLapsLoaded,
+      loadedCount,
+      selectedLapsCount: selectedLaps.length,
+      lapDataMapSize: lapDataMap.size,
+    };
   }, [selectedLaps, lapDataMap]);
+
+  // Check if all lap data is loaded and update progress
+  useEffect(() => {
+    setDataLoading(!loadingState.allLapsLoaded);
+
+    // Update total count when selected laps change
+    setLoadingProgress(prev => ({
+      ...prev,
+      totalCount: loadingState.selectedLapsCount,
+      loadedCount: loadingState.loadedCount,
+    }));
+  }, [loadingState]);
 
   // Add null checks to prevent runtime errors - after all hooks are called
   if (!sessionData || !sessionData.car || !sessionData.track) {
@@ -311,6 +365,7 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
               key={lap.id}
               lap={lap}
               onLapCompleted={handleLapCompleted}
+              onLapLoadingStart={handleLapLoadingStart}
               lapIndex={index}
             />
           );
@@ -628,14 +683,65 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
               </View>
             )}
 
-            {/* Loading indicator for charts */}
+            {/* Enhanced loading indicator for charts */}
             {selectedLaps.length > 0 && dataLoading && (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator
-                  size='large'
-                  color={RacingTheme.colors.primary}
-                />
-                <Text style={styles.loadingText}>Loading chart data...</Text>
+              <View style={styles.enhancedLoadingContainer}>
+                <View style={styles.loadingCard}>
+                  <Text style={styles.loadingTitle}>DOWNLOADING LAP DATA</Text>
+
+                  {/* Progress Bar */}
+                  <View style={styles.progressBarContainer}>
+                    <View
+                      style={[
+                        styles.progressBar,
+                        {
+                          width: `${
+                            (loadingProgress.loadedCount /
+                              loadingProgress.totalCount) *
+                            100
+                          }%`,
+                        },
+                      ]}
+                    />
+                  </View>
+
+                  <Text style={styles.progressText}>
+                    {loadingProgress.loadedCount} of{' '}
+                    {loadingProgress.totalCount} laps loaded
+                  </Text>
+
+                  {/* Currently Loading Laps */}
+                  {loadingProgress.currentlyLoading.length > 0 && (
+                    <View style={styles.currentlyLoadingSection}>
+                      <Text style={styles.currentlyLoadingTitle}>
+                        Currently downloading:
+                      </Text>
+                      {loadingProgress.currentlyLoading.map(lapId => {
+                        const lap = selectedLaps.find(l => l.id === lapId);
+                        return lap ? (
+                          <View key={lapId} style={styles.loadingLapItem}>
+                            <ActivityIndicator
+                              size='small'
+                              color={RacingTheme.colors.primary}
+                            />
+                            <Text style={styles.loadingLapText}>
+                              Lap {lap.lapNumber}
+                            </Text>
+                          </View>
+                        ) : null;
+                      })}
+                    </View>
+                  )}
+
+                  {/* Completed Laps */}
+                  {loadingProgress.completedLaps.length > 0 && (
+                    <View style={styles.completedSection}>
+                      <Text style={styles.completedTitle}>
+                        ✓ {loadingProgress.completedLaps.length} laps completed
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </View>
             )}
 
@@ -1238,6 +1344,76 @@ const styles = StyleSheet.create({
     fontSize: RacingTheme.typography.caption,
     color: RacingTheme.colors.primary,
     letterSpacing: 1,
+  },
+  enhancedLoadingContainer: {
+    alignItems: 'center',
+    marginBottom: RacingTheme.spacing.lg,
+  },
+  loadingCard: {
+    backgroundColor: RacingTheme.colors.surface,
+    borderRadius: RacingTheme.borderRadius.md,
+    padding: RacingTheme.spacing.lg,
+    borderWidth: 1,
+    borderColor: RacingTheme.colors.surfaceElevated,
+    minWidth: 300,
+    alignItems: 'center',
+  },
+  loadingTitle: {
+    fontSize: RacingTheme.typography.h4,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.primary,
+    marginBottom: RacingTheme.spacing.md,
+    letterSpacing: 1,
+  },
+  progressBarContainer: {
+    width: '100%',
+    height: 8,
+    backgroundColor: RacingTheme.colors.surfaceElevated,
+    borderRadius: 4,
+    marginBottom: RacingTheme.spacing.md,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    backgroundColor: RacingTheme.colors.primary,
+    borderRadius: 4,
+  },
+  progressText: {
+    fontSize: RacingTheme.typography.body,
+    color: RacingTheme.colors.text,
+    fontWeight: RacingTheme.typography.medium as any,
+    marginBottom: RacingTheme.spacing.md,
+  },
+  currentlyLoadingSection: {
+    width: '100%',
+    marginBottom: RacingTheme.spacing.md,
+  },
+  currentlyLoadingTitle: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.textSecondary,
+    fontWeight: RacingTheme.typography.bold as any,
+    marginBottom: RacingTheme.spacing.sm,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  loadingLapItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: RacingTheme.spacing.xs,
+  },
+  loadingLapText: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.text,
+    marginLeft: RacingTheme.spacing.sm,
+  },
+  completedSection: {
+    width: '100%',
+  },
+  completedTitle: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.success,
+    fontWeight: RacingTheme.typography.medium as any,
+    textAlign: 'center',
   },
   sharedLegendSection: {
     marginTop: RacingTheme.spacing.lg,
