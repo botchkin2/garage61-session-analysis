@@ -244,7 +244,27 @@ export const MultiLapTimeSeriesChart: React.FC<
     }
   }, [preloadedData]);
 
-  // Use first lap as reference for position/index-based playback (like TimeSeriesChart)
+  // Calculate real-time advancement rate based on lap time and sample count
+  const calculateAdvancementRate = useCallback(
+    (totalSamples: number, lapTimeSeconds?: number): number => {
+      if (!lapTimeSeconds || lapTimeSeconds <= 0) {
+        // Fallback to hardcoded value if no lap time provided
+        return 1.767;
+      }
+
+      // Calculate samples per second for real-time playback
+      const samplesPerSecond = totalSamples / lapTimeSeconds;
+
+      // Assuming ~30ms frame interval at speed 1, calculate samples per frame
+      const framesPerSecond = 1000 / 30; // ~33.3 FPS
+      const samplesPerFrame = samplesPerSecond / framesPerSecond;
+
+      return samplesPerFrame;
+    },
+    [],
+  );
+
+  // Use first lap as reference for position/index-based playback
   const referenceLapData = useMemo(() => {
     const result =
       lapDataMap.size === 0 ? null : Array.from(lapDataMap.values())[0];
@@ -253,7 +273,7 @@ export const MultiLapTimeSeriesChart: React.FC<
     return result;
   }, [lapDataMap]);
 
-  // Update visible data based on position and zoom level (like TimeSeriesChart)
+  // Update visible data based on position and zoom level
   const updateVisibleData = useCallback(
     (data: TimeSeriesData[], position: number): number => {
       if (!data || data.length === 0) {
@@ -307,14 +327,14 @@ export const MultiLapTimeSeriesChart: React.FC<
     [zoomLevel],
   );
 
-  // State for visible data (like TimeSeriesChart)
+  // State for visible data
   const [visibleData, setVisibleData] = useState<VisibleDataInfo>({
     data: [],
     startIdx: 0,
     endIdx: 0,
   });
 
-  // Helper functions for position management (like TimeSeriesChart)
+  // Helper functions for position management
   const getCurrentPosition = useCallback(
     (): number => externalCurrentPosition ?? visibleData.startIdx,
     [externalCurrentPosition, visibleData.startIdx],
@@ -333,7 +353,7 @@ export const MultiLapTimeSeriesChart: React.FC<
     [updateVisibleData, onPositionChange],
   );
 
-  // Start playback (like TimeSeriesChart)
+  // Start playback
   const startPlayback = useCallback(() => {
     if (isPlaying || !referenceLapData) {
       return;
@@ -346,7 +366,12 @@ export const MultiLapTimeSeriesChart: React.FC<
 
     const animate = () => {
       const currentPos = getCurrentPosition();
-      let advancement = 1.767; // Base advancement rate (same as TimeSeriesChart)
+      // Calculate real-time advancement rate based on lap time and sample count
+      const baseAdvancementRate = calculateAdvancementRate(
+        processedData.totalPoints,
+        laps[0]?.lapTime,
+      );
+      let advancement = baseAdvancementRate;
       advancement *= playbackSpeed;
 
       const refData = referenceLapDataRef.current;
@@ -374,6 +399,8 @@ export const MultiLapTimeSeriesChart: React.FC<
     getCurrentPosition,
     updatePosition,
     referenceLapData,
+    calculateAdvancementRate,
+    laps,
   ]);
 
   // Stop playback
@@ -433,6 +460,8 @@ export const MultiLapTimeSeriesChart: React.FC<
     // Don't depend on referenceLapData - only check if it exists when starting animation
     getCurrentPosition,
     updatePosition,
+    calculateAdvancementRate,
+    laps,
   ]);
 
   // Update visible data when reference lap data first loads (initial position = 0)
@@ -504,7 +533,7 @@ export const MultiLapTimeSeriesChart: React.FC<
   const chartWidth = width - 40;
   const chartHeight = 250;
 
-  // Current position is tracked by currentPosition (index, like TimeSeriesChart)
+  // Current position is tracked by currentPosition (index-based)
 
   if (laps.length === 0) {
     return (
