@@ -264,6 +264,11 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
 
   const {optimalSectors, optimalLapTime} = getOptimalLapData();
   const sectorVariances = getSectorVarianceData();
+  const meanSectors = sectorVariances.map(s => ({
+    sector: s.sector,
+    time: s.mean,
+  }));
+  const meanLapTime = sectorVariances.reduce((sum, s) => sum + s.mean, 0);
 
   // Toggle lap expansion
   const toggleLapExpansion = (lapId: string) => {
@@ -391,6 +396,8 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
             <OptimalSectorAnalysis
               optimalSectors={optimalSectors}
               optimalLapTime={optimalLapTime}
+              meanSectors={meanSectors}
+              meanLapTime={meanLapTime}
               isMobile={isMobile}
             />
 

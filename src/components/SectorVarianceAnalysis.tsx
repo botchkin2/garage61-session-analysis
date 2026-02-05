@@ -111,7 +111,7 @@ const SectorVarianceAnalysis: React.FC<SectorVarianceAnalysisProps> = ({
                       Spread: {sector.spread.toFixed(3)}s
                     </Text>
                     <Text style={styles.mobileVarianceDetail}>
-                      Avg: {formatLapTime(sector.mean)}
+                      Mean: {formatLapTime(sector.mean)}
                     </Text>
                     <Text style={styles.mobileVarianceDetail}>
                       Potential: {sector.potentialImprovement.toFixed(3)}s
@@ -129,7 +129,7 @@ const SectorVarianceAnalysis: React.FC<SectorVarianceAnalysisProps> = ({
                   INCONSISTENCY
                 </Text>
                 <Text style={styles.varianceTableHeaderCell}>SPREAD</Text>
-                <Text style={styles.varianceTableHeaderCell}>AVG TIME</Text>
+                <Text style={styles.varianceTableHeaderCell}>MEAN TIME</Text>
                 <Text style={styles.varianceTableHeaderCell}>TIME SAVINGS</Text>
               </View>
               <RacingDivider />
