@@ -20,5 +20,6 @@ export {
 export {default as BottomNavigation} from './BottomNavigation';
 export {default as HamburgerMenu} from './HamburgerMenu';
 export {default as HapticTab} from './haptic-tab';
+export {default as ScreenContainer} from './ScreenContainer';
 export {default as ThemedText} from './themed-text';
 export {default as ThemedView} from './themed-view';

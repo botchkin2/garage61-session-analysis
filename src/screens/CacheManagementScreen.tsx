@@ -1,4 +1,4 @@
-import {BottomNavigation} from '@src/components';
+import {BottomNavigation, ScreenContainer} from '@src/components';
 import {useCacheManagement} from '@src/hooks/useCacheManagement';
 import {RacingTheme} from '@src/theme';
 import {apiClient} from '@src/utils/api';
@@ -141,28 +141,28 @@ const CacheManagementScreen: React.FC = () => {
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.centered]}>
+      <ScreenContainer style={[styles.container, styles.centered]}>
         <ActivityIndicator size='large' color={RacingTheme.colors.primary} />
         <Text style={styles.loadingText}>Loading cache statistics...</Text>
-      </View>
+      </ScreenContainer>
     );
   }
 
   if (!cacheStats) {
     return (
-      <View style={[styles.container, styles.centered]}>
+      <ScreenContainer style={[styles.container, styles.centered]}>
         <Text style={styles.errorText}>Failed to load cache statistics</Text>
         <TouchableOpacity style={styles.retryButton} onPress={loadCacheStats}>
           <Text style={styles.retryButtonText}>Retry</Text>
         </TouchableOpacity>
-      </View>
+      </ScreenContainer>
     );
   }
 
   const {csvCache, reactQueryCache} = cacheStats;
 
   return (
-    <View style={styles.container}>
+    <ScreenContainer style={styles.container}>
       <ScrollView>
         <View style={styles.header}>
           <Text style={styles.title}>Cache Management</Text>
@@ -322,7 +322,7 @@ const CacheManagementScreen: React.FC = () => {
         </View>
       </ScrollView>
       <BottomNavigation currentScreen='cache' />
-    </View>
+    </ScreenContainer>
   );
 };
 

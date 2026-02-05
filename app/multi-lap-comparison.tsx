@@ -1,9 +1,13 @@
-import React from 'react';
-import {View, StyleSheet} from 'react-native';
-import {useRouter, useLocalSearchParams} from 'expo-router';
-import {MultiLapComparison, BottomNavigation} from '@src/components';
+import {
+  BottomNavigation,
+  MultiLapComparison,
+  ScreenContainer,
+} from '@src/components';
 import {RacingTheme} from '@src/theme';
 import {SessionData} from '@src/types';
+import {useLocalSearchParams, useRouter} from 'expo-router';
+import React from 'react';
+import {StyleSheet} from 'react-native';
 
 const MultiLapComparisonScreen: React.FC = () => {
   const router = useRouter();
@@ -21,14 +25,14 @@ const MultiLapComparisonScreen: React.FC = () => {
   };
 
   return (
-    <View style={styles.container}>
+    <ScreenContainer style={styles.container}>
       <MultiLapComparison
         sessionData={sessionData}
         onBack={handleBackToSessionAnalysis}
         selectedLapIds={selectedLapIdsSet}
       />
       <BottomNavigation currentScreen='index' />
-    </View>
+    </ScreenContainer>
   );
 };
 

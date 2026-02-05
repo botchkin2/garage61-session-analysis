@@ -1,17 +1,18 @@
-import React, {useState, useRef} from 'react';
+import {RacingTheme} from '@src/theme';
+import {useRouter} from 'expo-router';
+import React, {useRef, useState} from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
   Animated,
   Dimensions,
-  PanResponder,
   Easing,
+  PanResponder,
   Platform,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import {useRouter} from 'expo-router';
-import {RacingTheme} from '@src/theme';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
 
 const {height} = Dimensions.get('window');
 
@@ -29,6 +30,7 @@ interface BottomNavigationProps {
 
 const BottomNavigation: React.FC<BottomNavigationProps> = ({currentScreen}) => {
   const isWeb = Platform.OS === 'web';
+  const insets = useSafeAreaInsets();
   const [isExpanded, setIsExpanded] = useState(false);
   const slideAnim = useRef(new Animated.Value(isWeb ? 0 : height)).current; // Start visible on web, off-screen on mobile
   const router = useRouter();
@@ -102,9 +104,9 @@ const BottomNavigation: React.FC<BottomNavigationProps> = ({currentScreen}) => {
   ).current;
 
   if (isWeb) {
-    // Web version: Persistent footer always visible
+    // Web version: Persistent footer always visible (respect safe area on mobile PWA)
     return (
-      <View style={styles.webFooter}>
+      <View style={[styles.webFooter, {paddingBottom: insets.bottom}]}>
         <View style={styles.webNavigationItems}>
           {navigationItems.map(item => (
             <TouchableOpacity
@@ -133,19 +135,21 @@ const BottomNavigation: React.FC<BottomNavigationProps> = ({currentScreen}) => {
     );
   }
 
-  // Mobile version: Collapsible navigation
+  // Mobile version: Collapsible navigation (respect bottom safe area / home indicator)
+  const bottomInset = insets.bottom;
   return (
     <>
       {/* Invisible touch area for swipe gestures */}
-      <View style={styles.touchArea} {...panResponder.panHandlers} />
+      <View
+        style={[styles.touchArea, {bottom: bottomInset}]}
+        {...panResponder.panHandlers}
+      />
 
       {/* Navigation Panel */}
       <Animated.View
         style={[
           styles.navigationContainer,
-          {
-            transform: [{translateY: slideAnim}],
-          },
+          {paddingBottom: bottomInset, transform: [{translateY: slideAnim}]},
         ]}>
         {/* Header with toggle button */}
         <View style={styles.navigationHeader}>

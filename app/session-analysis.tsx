@@ -1,9 +1,13 @@
-import React from 'react';
-import {View, StyleSheet} from 'react-native';
-import {useRouter, useLocalSearchParams} from 'expo-router';
-import {SessionAnalysis, BottomNavigation} from '@src/components';
+import {
+  BottomNavigation,
+  ScreenContainer,
+  SessionAnalysis,
+} from '@src/components';
 import {RacingTheme} from '@src/theme';
 import {SessionData} from '@src/types';
+import {useLocalSearchParams, useRouter} from 'expo-router';
+import React from 'react';
+import {StyleSheet} from 'react-native';
 
 const SessionAnalysisScreen: React.FC = () => {
   const router = useRouter();
@@ -28,14 +32,14 @@ const SessionAnalysisScreen: React.FC = () => {
   };
 
   return (
-    <View style={styles.container}>
+    <ScreenContainer style={styles.container}>
       <SessionAnalysis
         sessionData={sessionData}
         onBack={handleBackToLaps}
         onMultiLapComparison={handleMultiLapComparison}
       />
       <BottomNavigation currentScreen='index' />
-    </View>
+    </ScreenContainer>
   );
 };
 

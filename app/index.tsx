@@ -1,9 +1,9 @@
-import React from 'react';
-import {View, StyleSheet} from 'react-native';
-import {useRouter} from 'expo-router';
-import {LapList, BottomNavigation} from '@src/components';
+import {BottomNavigation, LapList, ScreenContainer} from '@src/components';
 import {RacingTheme} from '@src/theme';
 import {SessionData} from '@src/types';
+import {useRouter} from 'expo-router';
+import React from 'react';
+import {StyleSheet} from 'react-native';
 
 const AnalysisScreen: React.FC = () => {
   const router = useRouter();
@@ -16,10 +16,10 @@ const AnalysisScreen: React.FC = () => {
   };
 
   return (
-    <View style={styles.container}>
+    <ScreenContainer style={styles.container}>
       <LapList onSessionAnalysis={handleSessionAnalysis} />
       <BottomNavigation currentScreen='index' />
-    </View>
+    </ScreenContainer>
   );
 };
 

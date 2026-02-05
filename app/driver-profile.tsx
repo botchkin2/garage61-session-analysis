@@ -1,16 +1,14 @@
-import React from 'react';
-import {View, StyleSheet} from 'react-native';
-import {UserProfile, BottomNavigation} from '@src/components';
+import {BottomNavigation, ScreenContainer, UserProfile} from '@src/components';
 import {RacingTheme} from '@src/theme';
+import React from 'react';
+import {StyleSheet} from 'react-native';
 
-const DriverProfileScreen: React.FC = () => {
-  return (
-    <View style={styles.container}>
-      <UserProfile />
-      <BottomNavigation currentScreen='driver' />
-    </View>
-  );
-};
+const DriverProfileScreen: React.FC = () => (
+  <ScreenContainer style={styles.container}>
+    <UserProfile />
+    <BottomNavigation currentScreen='driver' />
+  </ScreenContainer>
+);
 
 const styles = StyleSheet.create({
   container: {
