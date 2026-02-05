@@ -32,7 +32,7 @@ const BottomNavigation: React.FC<BottomNavigationProps> = ({currentScreen}) => {
   const isWeb = Platform.OS === 'web';
   const insets = useSafeAreaInsets();
   const [isExpanded, setIsExpanded] = useState(false);
-  const slideAnim = useRef(new Animated.Value(isWeb ? 0 : height)).current; // Start visible on web, off-screen on mobile
+  const slideAnim = useRef(new Animated.Value(isWeb ? 0 : height)).current; // Web: visible; mobile: start off-screen below
   const router = useRouter();
 
   const navigationItems: NavigationItem[] = [
@@ -57,7 +57,8 @@ const BottomNavigation: React.FC<BottomNavigationProps> = ({currentScreen}) => {
   ];
 
   const toggleNavigation = () => {
-    const toValue = isExpanded ? height : height - 280; // Show/hide 280px from bottom
+    // Mobile: translateY 0 = panel visible at bottom, translateY height = panel hidden below screen
+    const toValue = isExpanded ? height : 0;
 
     Animated.timing(slideAnim, {
       toValue,
@@ -139,13 +140,22 @@ const BottomNavigation: React.FC<BottomNavigationProps> = ({currentScreen}) => {
   const bottomInset = insets.bottom;
   return (
     <>
-      {/* Invisible touch area for swipe gestures */}
+      {/* Always-visible tab bar at bottom: tap to open full nav */}
       <View
-        style={[styles.touchArea, {bottom: bottomInset}]}
-        {...panResponder.panHandlers}
-      />
+        style={[styles.mobileTabBar, {paddingBottom: bottomInset}]}
+        {...panResponder.panHandlers}>
+        <TouchableOpacity
+          style={styles.mobileTabBarTouchable}
+          onPress={toggleNavigation}
+          activeOpacity={0.9}>
+          <Text style={styles.mobileTabBarIcon}>{isExpanded ? '▼' : '▲'}</Text>
+          <Text style={styles.mobileTabBarLabel}>
+            {isExpanded ? 'Close' : 'Menu'}
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-      {/* Navigation Panel */}
+      {/* Full navigation panel (slides up from tab bar) */}
       <Animated.View
         style={[
           styles.navigationContainer,
@@ -209,14 +219,39 @@ const BottomNavigation: React.FC<BottomNavigationProps> = ({currentScreen}) => {
 };
 
 const styles = StyleSheet.create({
-  touchArea: {
+  mobileTabBar: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: 50, // Touch area at bottom of screen
-    backgroundColor: 'transparent',
+    minHeight: 50,
+    backgroundColor: RacingTheme.colors.surface,
+    borderTopWidth: 1,
+    borderTopColor: RacingTheme.colors.surfaceElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
     zIndex: 999,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: -1},
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+  },
+  mobileTabBarTouchable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+  },
+  mobileTabBarIcon: {
+    fontSize: 18,
+    color: RacingTheme.colors.primary,
+    marginRight: 8,
+  },
+  mobileTabBarLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: RacingTheme.colors.text,
   },
   navigationContainer: {
     position: 'absolute',
