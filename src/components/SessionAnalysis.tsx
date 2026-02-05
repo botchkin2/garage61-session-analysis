@@ -233,6 +233,11 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
         const bestTime = Math.min(...stats.times);
         // Calculate spread as max - min range
         const spread = Math.max(...stats.times) - Math.min(...stats.times);
+        // Potential savings = sum of (each lap's sector time - best) = total time lost vs best
+        const potentialImprovement = stats.times.reduce(
+          (sum, t) => sum + (t - bestTime),
+          0,
+        );
 
         return {
           sector: sectorNum,
@@ -245,7 +250,7 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
           spread,
           lapCount: stats.count,
           times: stats.times,
-          potentialImprovement: (mean - bestTime) * stats.count, // Total time lost due to inconsistency
+          potentialImprovement,
         };
       })
       .sort(

@@ -81,8 +81,7 @@ const SectorVarianceAnalysis: React.FC<SectorVarianceAnalysisProps> = ({
             SECTOR CONSISTENCY RANKINGS
           </Text>
           <Text style={styles.varianceRankingsSubtitle}>
-            Lower % = more consistent • 100% = 0.5s spread • Higher % = where to
-            focus
+            Lower % = more consistent • Higher % = where to focus
           </Text>
 
           {isMobile ? (
