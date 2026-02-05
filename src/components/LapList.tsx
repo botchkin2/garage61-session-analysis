@@ -314,20 +314,36 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
               </View>
             )}
 
-            {/* Time Range Selector */}
-            <TimeRangeSelector
-              selectedRange={selectedTimeRange}
-              onRangeChange={setSelectedTimeRange}
-              style={styles.timeRangeSelector}
-            />
-
-            {/* Refresh Button */}
-            <RacingButton
-              title='🔄 REFRESH TELEMETRY'
-              onPress={handleRefresh}
-              style={styles.refreshButton}
-              disabled={refreshing}
-            />
+            {/* Time Range Selector + Refresh (same row on web) */}
+            {Platform.OS === 'web' ? (
+              <View style={styles.topControlsRow}>
+                <TimeRangeSelector
+                  selectedRange={selectedTimeRange}
+                  onRangeChange={setSelectedTimeRange}
+                  style={styles.timeRangeSelectorWeb}
+                />
+                <RacingButton
+                  title='🔄 REFRESH TELEMETRY'
+                  onPress={handleRefresh}
+                  style={styles.refreshButtonWeb}
+                  disabled={refreshing}
+                />
+              </View>
+            ) : (
+              <>
+                <TimeRangeSelector
+                  selectedRange={selectedTimeRange}
+                  onRangeChange={setSelectedTimeRange}
+                  style={styles.timeRangeSelector}
+                />
+                <RacingButton
+                  title='🔄 REFRESH TELEMETRY'
+                  onPress={handleRefresh}
+                  style={styles.refreshButton}
+                  disabled={refreshing}
+                />
+              </>
+            )}
 
             {/* Event Sessions List */}
             <View style={styles.eventsSection}>
@@ -340,11 +356,14 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
                     <RacingCard key={event.eventId} style={styles.eventCard}>
                       {/* Event Header */}
                       <TouchableOpacity
-                        style={
+                        style={[
                           isMobile
                             ? styles.mobileEventHeader
-                            : styles.eventHeader
-                        }
+                            : styles.eventHeader,
+                          Platform.OS === 'web' &&
+                            !isMobile &&
+                            styles.eventHeaderWeb,
+                        ]}
                         onPress={() => toggleEvent(event.eventId)}>
                         {isMobile ? (
                           /* Mobile Layout */
@@ -420,14 +439,26 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
                               </View>
                             </View>
 
-                            <View style={styles.eventStats}>
-                              <View style={styles.statItem}>
+                            <View
+                              style={[
+                                styles.eventStats,
+                                Platform.OS === 'web' && styles.eventStatsWeb,
+                              ]}>
+                              <View
+                                style={[
+                                  styles.statItem,
+                                  Platform.OS === 'web' && styles.statItemWeb,
+                                ]}>
                                 <Text style={styles.statNumber}>
                                   {event.totalLaps}
                                 </Text>
                                 <Text style={styles.statLabel}>LAPS</Text>
                               </View>
-                              <View style={styles.statItem}>
+                              <View
+                                style={[
+                                  styles.statItem,
+                                  Platform.OS === 'web' && styles.statItemWeb,
+                                ]}>
                                 <Text style={styles.statNumber}>
                                   <LapTime time={event.bestLapTime} isBest />
                                 </Text>
@@ -435,12 +466,26 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
                               </View>
                               {onSessionAnalysis && (
                                 <TouchableOpacity
-                                  style={styles.analyzeButton}
-                                  onPress={() => handleSessionAnalysis(event)}>
+                                  style={[
+                                    styles.analyzeButton,
+                                    Platform.OS === 'web' &&
+                                      styles.analyzeButtonWeb,
+                                  ]}
+                                  onPress={() => handleSessionAnalysis(event)}
+                                  activeOpacity={0.7}>
                                   <Text style={styles.analyzeIcon}>📊</Text>
+                                  {Platform.OS === 'web' && (
+                                    <Text style={styles.analyzeButtonLabel}>
+                                      Analyze
+                                    </Text>
+                                  )}
                                 </TouchableOpacity>
                               )}
-                              <Text style={styles.expandIcon}>
+                              <Text
+                                style={[
+                                  styles.expandIcon,
+                                  Platform.OS === 'web' && styles.expandIconWeb,
+                                ]}>
                                 {event.expanded ? '▼' : '▶'}
                               </Text>
                             </View>
@@ -571,11 +616,14 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
                       style={styles.eventCardAndroid}>
                       {/* Event Header */}
                       <TouchableOpacity
-                        style={
+                        style={[
                           isMobile
                             ? styles.mobileEventHeader
-                            : styles.eventHeader
-                        }
+                            : styles.eventHeader,
+                          Platform.OS === 'web' &&
+                            !isMobile &&
+                            styles.eventHeaderWeb,
+                        ]}
                         onPress={() => toggleEvent(event.eventId)}>
                         {isMobile ? (
                           /* Mobile Layout */
@@ -651,14 +699,26 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
                               </View>
                             </View>
 
-                            <View style={styles.eventStats}>
-                              <View style={styles.statItem}>
+                            <View
+                              style={[
+                                styles.eventStats,
+                                Platform.OS === 'web' && styles.eventStatsWeb,
+                              ]}>
+                              <View
+                                style={[
+                                  styles.statItem,
+                                  Platform.OS === 'web' && styles.statItemWeb,
+                                ]}>
                                 <Text style={styles.statNumber}>
                                   {event.totalLaps}
                                 </Text>
                                 <Text style={styles.statLabel}>LAPS</Text>
                               </View>
-                              <View style={styles.statItem}>
+                              <View
+                                style={[
+                                  styles.statItem,
+                                  Platform.OS === 'web' && styles.statItemWeb,
+                                ]}>
                                 <Text style={styles.statNumber}>
                                   <LapTime time={event.bestLapTime} isBest />
                                 </Text>
@@ -666,12 +726,26 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
                               </View>
                               {onSessionAnalysis && (
                                 <TouchableOpacity
-                                  style={styles.analyzeButton}
-                                  onPress={() => handleSessionAnalysis(event)}>
+                                  style={[
+                                    styles.analyzeButton,
+                                    Platform.OS === 'web' &&
+                                      styles.analyzeButtonWeb,
+                                  ]}
+                                  onPress={() => handleSessionAnalysis(event)}
+                                  activeOpacity={0.7}>
                                   <Text style={styles.analyzeIcon}>📊</Text>
+                                  {Platform.OS === 'web' && (
+                                    <Text style={styles.analyzeButtonLabel}>
+                                      Analyze
+                                    </Text>
+                                  )}
                                 </TouchableOpacity>
                               )}
-                              <Text style={styles.expandIcon}>
+                              <Text
+                                style={[
+                                  styles.expandIcon,
+                                  Platform.OS === 'web' && styles.expandIconWeb,
+                                ]}>
                                 {event.expanded ? '▼' : '▶'}
                               </Text>
                             </View>
@@ -867,6 +941,20 @@ const styles = StyleSheet.create({
     marginBottom: RacingTheme.spacing.lg,
     alignSelf: 'center',
   },
+  topControlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 16,
+    marginBottom: RacingTheme.spacing.lg,
+  },
+  timeRangeSelectorWeb: {
+    marginBottom: 0,
+  },
+  refreshButtonWeb: {
+    marginBottom: 0,
+  },
   metricsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -948,9 +1036,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  eventStatsWeb: {
+    gap: RacingTheme.spacing.lg,
+    marginLeft: RacingTheme.spacing.md,
+  },
   statItem: {
     alignItems: 'center',
     marginRight: RacingTheme.spacing.md,
+  },
+  statItemWeb: {
+    marginRight: RacingTheme.spacing.lg,
+    minWidth: 56,
   },
   statNumber: {
     fontSize: RacingTheme.typography.body,
@@ -967,6 +1063,9 @@ const styles = StyleSheet.create({
     fontSize: RacingTheme.typography.h4,
     color: RacingTheme.colors.primary,
   },
+  expandIconWeb: {
+    marginLeft: RacingTheme.spacing.sm,
+  },
   analyzeButton: {
     marginRight: RacingTheme.spacing.sm,
     padding: RacingTheme.spacing.xs,
@@ -974,6 +1073,20 @@ const styles = StyleSheet.create({
     backgroundColor: RacingTheme.colors.surfaceElevated,
     borderWidth: 1,
     borderColor: RacingTheme.colors.secondary,
+  },
+  analyzeButtonWeb: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: RacingTheme.spacing.sm,
+    paddingHorizontal: RacingTheme.spacing.md,
+    marginRight: RacingTheme.spacing.md,
+    gap: RacingTheme.spacing.xs,
+    minHeight: 44,
+  },
+  analyzeButtonLabel: {
+    fontSize: RacingTheme.typography.body,
+    fontWeight: RacingTheme.typography.semibold as any,
+    color: RacingTheme.colors.secondary,
   },
   analyzeIcon: {
     fontSize: RacingTheme.typography.body,
@@ -1151,6 +1264,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     flexWrap: 'wrap',
+    gap: RacingTheme.spacing.md,
   },
   mobileEventDate: {
     fontSize: RacingTheme.typography.caption,
@@ -1160,7 +1274,7 @@ const styles = StyleSheet.create({
     fontSize: RacingTheme.typography.caption,
     color: RacingTheme.colors.secondary,
     fontWeight: RacingTheme.typography.medium as any,
-    flex: 1,
+    marginLeft: RacingTheme.spacing.sm,
   },
   // Mobile Lap Cards Styles
   mobileLapsContainer: {
