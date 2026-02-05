@@ -6,6 +6,7 @@ import React, {useEffect, useState} from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -164,13 +165,16 @@ const CacheManagementScreen: React.FC = () => {
   return (
     <ScreenContainer style={styles.container}>
       <ScrollView>
-        <View style={styles.header}>
-          <Text style={styles.title}>Cache Management</Text>
-          <Text style={styles.subtitle}>
-            Monitor and manage your app&apos;s cached data to optimize storage
-            and performance
-          </Text>
-        </View>
+        {/* Page header (hidden on web; title is in top header) */}
+        {Platform.OS !== 'web' && (
+          <View style={styles.header}>
+            <Text style={styles.title}>Cache Management</Text>
+            <Text style={styles.subtitle}>
+              Monitor and manage your app&apos;s cached data to optimize storage
+              and performance
+            </Text>
+          </View>
+        )}
 
         {/* CSV Cache Section */}
         <View style={styles.section}>

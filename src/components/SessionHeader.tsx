@@ -2,7 +2,7 @@ import {RacingButton} from '@src/components';
 import {RacingTheme} from '@src/theme';
 import {SessionData} from '@src/types';
 import React from 'react';
-import {Text, View} from 'react-native';
+import {Platform, Text, View} from 'react-native';
 
 interface SessionHeaderProps {
   sessionData: SessionData;
@@ -34,9 +34,11 @@ const SessionHeader: React.FC<SessionHeaderProps> = ({sessionData, onBack}) => {
         />
       </View>
 
-      {/* Session Header */}
+      {/* Session Header (title hidden on web; shown in top header) */}
       <View style={styles.header}>
-        <Text style={styles.title}>SESSION ANALYSIS</Text>
+        {Platform.OS !== 'web' && (
+          <Text style={styles.title}>SESSION ANALYSIS</Text>
+        )}
         <View style={styles.sessionInfo}>
           <Text style={styles.sessionName}>
             {sessionData.car.name} • {sessionData.track.name}

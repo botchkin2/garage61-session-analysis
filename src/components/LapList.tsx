@@ -1,26 +1,26 @@
-import React, {useState, useEffect, useCallback, useMemo} from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
+  LapTime,
+  RacingButton,
+  RacingCard,
+  RacingDivider,
+  StatusBadge,
+  TimeRangeSelector,
+} from '@src/components';
+import {useLaps} from '@src/hooks/useApiQueries';
+import {RacingTheme} from '@src/theme';
+import {Lap} from '@src/types';
+import React, {useCallback, useEffect, useMemo, useState} from 'react';
+import {
   ActivityIndicator,
   Animated,
   Dimensions,
   Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import {useLaps} from '@src/hooks/useApiQueries';
-import {Lap} from '@src/types';
-import {
-  RacingCard,
-  RacingButton,
-  StatusBadge,
-  LapTime,
-  RacingDivider,
-  TimeRangeSelector,
-} from '@src/components';
-import {RacingTheme} from '@src/theme';
 
 interface EventGroup {
   eventId: string;
@@ -304,13 +304,15 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
           showsVerticalScrollIndicator={true}
           keyboardShouldPersistTaps='handled'>
           <View style={styles.container}>
-            {/* Racing Dashboard Header */}
-            <View style={styles.dashboardHeader}>
-              <Text style={styles.dashboardTitle}>RACING ANALYTICS</Text>
-              <Text style={styles.dashboardSubtitle}>
-                {formatTimeRange(selectedTimeRange)} Performance
-              </Text>
-            </View>
+            {/* Racing Dashboard Header (hidden on web; title is in top header) */}
+            {Platform.OS !== 'web' && (
+              <View style={styles.dashboardHeader}>
+                <Text style={styles.dashboardTitle}>RACING ANALYTICS</Text>
+                <Text style={styles.dashboardSubtitle}>
+                  {formatTimeRange(selectedTimeRange)} Performance
+                </Text>
+              </View>
+            )}
 
             {/* Time Range Selector */}
             <TimeRangeSelector

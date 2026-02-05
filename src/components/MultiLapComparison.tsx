@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -388,9 +389,11 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
               />
             </View>
 
-            {/* Session Header */}
+            {/* Session Header (title hidden on web; shown in top header) */}
             <View style={styles.header}>
-              <Text style={styles.title}>MULTI-LAP COMPARISON</Text>
+              {Platform.OS !== 'web' && (
+                <Text style={styles.title}>MULTI-LAP COMPARISON</Text>
+              )}
               <View style={styles.sessionInfo}>
                 <Text style={styles.sessionName}>
                   {sessionData.car.name} • {sessionData.track.name}

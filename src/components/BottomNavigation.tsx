@@ -105,35 +105,8 @@ const BottomNavigation: React.FC<BottomNavigationProps> = ({currentScreen}) => {
   ).current;
 
   if (isWeb) {
-    // Web version: Persistent footer always visible (respect safe area on mobile PWA)
-    return (
-      <View style={[styles.webFooter, {paddingBottom: insets.bottom}]}>
-        <View style={styles.webNavigationItems}>
-          {navigationItems.map(item => (
-            <TouchableOpacity
-              key={item.id}
-              style={[
-                styles.webNavigationItem,
-                currentScreen === item.id && styles.webActiveNavigationItem,
-              ]}
-              onPress={() => handleNavigation(item)}
-              activeOpacity={0.7}>
-              <Text style={styles.webItemIcon}>{item.icon}</Text>
-              <Text
-                style={[
-                  styles.webItemLabel,
-                  currentScreen === item.id && styles.webActiveItemLabel,
-                ]}>
-                {item.label}
-              </Text>
-              {currentScreen === item.id && (
-                <View style={styles.webActiveIndicator} />
-              )}
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-    );
+    // Web: use top header + hamburger menu instead of bottom nav
+    return null;
   }
 
   // Mobile version: Collapsible navigation (respect bottom safe area / home indicator)
