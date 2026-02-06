@@ -22,6 +22,8 @@ import {
   ProcessedLapData,
 } from './MultiLapTimeSeriesChart';
 
+const DESKTOP_BREAKPOINT = 900;
+
 interface ChartConfig {
   id: string;
   selectedSeries: string[];
@@ -54,6 +56,10 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
   const [zoomLevel, setZoomLevel] = useState(3);
   const [showTrackMap, setShowTrackMap] = useState(true);
   const [currentPosition, setCurrentPosition] = useState(0);
+  const [windowWidth, setWindowWidth] = useState(
+    () => Dimensions.get('window').width,
+  );
+  const isDesktop = windowWidth >= DESKTOP_BREAKPOINT;
 
   // Multiple charts state
   const [charts, setCharts] = useState<ChartConfig[]>([
@@ -132,7 +138,7 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
 
   useEffect(() => {
     const subscription = Dimensions.addEventListener('change', ({window}) => {
-      _setDimensions(window);
+      setWindowWidth(window.width);
     });
     return () => subscription?.remove();
   }, []);
@@ -442,8 +448,8 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
               </Text>
             </View>
 
-            {/* Shared Controls */}
-            {selectedLaps.length > 0 && (
+            {/* Shared Controls - hidden on desktop when map is shown (all controls move next to map) */}
+            {selectedLaps.length > 0 && (!isDesktop || !showTrackMap) && (
               <View style={styles.sharedControlsSection}>
                 <Text style={styles.sectionTitle}>SHARED CONTROLS</Text>
                 <View style={styles.sharedControls}>
@@ -563,7 +569,7 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
                   return null;
                 }
 
-                return (
+                const mapBlock = (
                   <View style={styles.sharedTrackMapContainer}>
                     <View style={styles.sharedTrackMap}>
                       <Svg
@@ -647,6 +653,128 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
                     </View>
                   </View>
                 );
+
+                if (isDesktop) {
+                  return (
+                    <View style={styles.mapAndPlaybackRow}>
+                      {mapBlock}
+                      <View style={styles.allControlsColumn}>
+                        <Text style={styles.sectionTitle}>SHARED CONTROLS</Text>
+                        <View style={styles.sharedControls}>
+                          <View style={styles.controlsRow}>
+                            <View style={styles.resetMapGroup}>
+                              <TouchableOpacity
+                                style={styles.controlButton}
+                                onPress={resetPlayback}>
+                                <Text style={styles.controlButtonText}>
+                                  🔄 RESET
+                                </Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[
+                                  styles.controlButton,
+                                  showTrackMap && styles.controlButtonActive,
+                                ]}
+                                onPress={toggleTrackMap}>
+                                <Text style={styles.controlButtonText}>
+                                  🗺️ MAP
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                          <View style={styles.controlsRow}>
+                            <View style={styles.playbackGroup}>
+                              <TouchableOpacity
+                                style={styles.controlButton}
+                                onPress={() =>
+                                  updatePlaybackSpeed(
+                                    Math.max(-5.0, playbackSpeed - 0.5),
+                                  )
+                                }>
+                                <Text style={styles.controlButtonText}>⏪</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.controlButton}
+                                onPress={() =>
+                                  updatePosition(
+                                    Math.max(0, getCurrentPosition() - 50),
+                                  )
+                                }>
+                                <Text style={styles.controlButtonText}>⏮️</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[
+                                  styles.playButton,
+                                  isPlaying && styles.playButtonActive,
+                                ]}
+                                onPress={togglePlayback}>
+                                <Text style={styles.playButtonText}>
+                                  {isPlaying ? '⏸️' : '▶️'}
+                                </Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.controlButton}
+                                onPress={() =>
+                                  updatePosition(
+                                    Math.min(
+                                      (Array.from(lapDataMap.values())[0]
+                                        ?.totalPoints || 0) - 1,
+                                      getCurrentPosition() + 50,
+                                    ),
+                                  )
+                                }>
+                                <Text style={styles.controlButtonText}>⏭️</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.controlButton}
+                                onPress={() =>
+                                  updatePlaybackSpeed(
+                                    Math.min(5.0, playbackSpeed + 0.5),
+                                  )
+                                }>
+                                <Text style={styles.controlButtonText}>⏩</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                          <View
+                            style={[
+                              styles.controlsRow,
+                              styles.controlsRowLast,
+                            ]}>
+                            <View style={styles.zoomGroup}>
+                              <TouchableOpacity
+                                style={styles.controlButton}
+                                onPress={() =>
+                                  updateZoom(Math.max(1, zoomLevel - 1))
+                                }>
+                                <Text style={styles.controlButtonText}>
+                                  🔍-
+                                </Text>
+                              </TouchableOpacity>
+                              <Text style={styles.zoomText}>{zoomLevel}</Text>
+                              <TouchableOpacity
+                                style={styles.controlButton}
+                                onPress={() =>
+                                  updateZoom(Math.min(5, zoomLevel + 1))
+                                }>
+                                <Text style={styles.controlButtonText}>
+                                  🔍+
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                            <View style={styles.statusGroup}>
+                              <Text style={styles.statusText}>
+                                Speed: {playbackSpeed.toFixed(1)}x
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                }
+
+                return mapBlock;
               })()}
 
             {/* Charts */}
@@ -1173,6 +1301,26 @@ const styles = StyleSheet.create({
     marginHorizontal: RacingTheme.spacing.sm,
     minWidth: 20,
     textAlign: 'center',
+  },
+  mapAndPlaybackRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: RacingTheme.spacing.lg,
+    marginBottom: RacingTheme.spacing.sm,
+    flexWrap: 'wrap',
+  },
+  playbackControlsColumn: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: RacingTheme.spacing.sm,
+  },
+  allControlsColumn: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    minWidth: 280,
   },
   sharedTrackMapContainer: {
     alignItems: 'center',
