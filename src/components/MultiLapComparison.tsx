@@ -422,25 +422,31 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
               </View>
             )}
 
-            {/* Lap Selection Controls */}
+            {/* Lap Selection Controls - 2x2 grid for vertical efficiency on mobile */}
             <View style={styles.selectionSection}>
-              <Text style={styles.sectionTitle}>LAP SELECTION</Text>
+              <Text style={[styles.sectionTitle, styles.selectionSectionTitle]}>
+                LAP SELECTION
+              </Text>
               <View style={styles.selectionControls}>
-                <RacingButton
-                  title='SELECT ALL'
-                  onPress={selectAllLaps}
-                  style={styles.selectionButton}
-                />
-                <RacingButton
-                  title='CLEAN LAPS'
-                  onPress={selectCleanLaps}
-                  style={styles.selectionButton}
-                />
-                <RacingButton
-                  title='CLEAR ALL'
-                  onPress={clearSelection}
-                  style={styles.selectionButton}
-                />
+                <View style={styles.selectionRow}>
+                  <RacingButton
+                    title='SELECT ALL'
+                    onPress={selectAllLaps}
+                    style={[styles.selectionButton, styles.selectionGridCell]}
+                  />
+                  <RacingButton
+                    title='CLEAN LAPS'
+                    onPress={selectCleanLaps}
+                    style={[styles.selectionButton, styles.selectionGridCell]}
+                  />
+                </View>
+                <View style={styles.selectionRow}>
+                  <RacingButton
+                    title='CLEAR ALL'
+                    onPress={clearSelection}
+                    style={[styles.selectionButton, styles.selectionGridCell]}
+                  />
+                </View>
               </View>
               <Text style={styles.selectionInfo}>
                 {selectedLaps.length} of {laps.length} laps selected for
@@ -1207,15 +1213,26 @@ const styles = StyleSheet.create({
   selectionSection: {
     marginBottom: RacingTheme.spacing.lg,
   },
+  selectionSectionTitle: {
+    marginBottom: RacingTheme.spacing.sm,
+  },
   selectionControls: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: RacingTheme.spacing.sm,
+    flexDirection: 'column',
+    gap: RacingTheme.spacing.xs,
     marginBottom: RacingTheme.spacing.md,
+  },
+  selectionRow: {
+    flexDirection: 'row',
+    gap: RacingTheme.spacing.sm,
   },
   selectionButton: {
     flex: 1,
-    minWidth: 80,
+    minWidth: 0,
+    paddingVertical: RacingTheme.spacing.xs,
+  },
+  selectionGridCell: {
+    flex: 1,
+    minWidth: 0,
   },
   selectionInfo: {
     fontSize: RacingTheme.typography.caption,
