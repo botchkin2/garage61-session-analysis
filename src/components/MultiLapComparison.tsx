@@ -449,11 +449,21 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
                 <View style={styles.sharedControls}>
                   {/* Row 1: Playback Controls */}
                   <View style={styles.controlsRow}>
-                    <TouchableOpacity
-                      style={styles.controlButton}
-                      onPress={resetPlayback}>
-                      <Text style={styles.controlButtonText}>🔄 RESET</Text>
-                    </TouchableOpacity>
+                    <View style={styles.resetMapGroup}>
+                      <TouchableOpacity
+                        style={styles.controlButton}
+                        onPress={resetPlayback}>
+                        <Text style={styles.controlButtonText}>🔄 RESET</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.controlButton,
+                          showTrackMap && styles.controlButtonActive,
+                        ]}
+                        onPress={toggleTrackMap}>
+                        <Text style={styles.controlButtonText}>🗺️ MAP</Text>
+                      </TouchableOpacity>
+                    </View>
 
                     <View style={styles.playbackGroup}>
                       <TouchableOpacity
@@ -509,19 +519,10 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
                         <Text style={styles.controlButtonText}>⏩</Text>
                       </TouchableOpacity>
                     </View>
-
-                    <TouchableOpacity
-                      style={[
-                        styles.controlButton,
-                        showTrackMap && styles.controlButtonActive,
-                      ]}
-                      onPress={toggleTrackMap}>
-                      <Text style={styles.controlButtonText}>🗺️ MAP</Text>
-                    </TouchableOpacity>
                   </View>
 
                   {/* Row 2: Zoom Controls */}
-                  <View style={styles.controlsRow}>
+                  <View style={[styles.controlsRow, styles.controlsRowLast]}>
                     <View style={styles.zoomGroup}>
                       <TouchableOpacity
                         style={styles.controlButton}
@@ -653,16 +654,15 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
               <View style={styles.chartsSection}>
                 {charts.map(chart => (
                   <View key={chart.id} style={styles.chartContainer}>
-                    <View style={styles.chartHeader}>
-                      <Text style={styles.chartTitle}>{chart.title}</Text>
-                      {charts.length > 1 && (
+                    {charts.length > 1 && (
+                      <View style={styles.chartHeader}>
                         <TouchableOpacity
                           style={styles.removeChartButton}
                           onPress={() => removeChart(chart.id)}>
                           <Text style={styles.removeChartButtonText}>✕</Text>
                         </TouchableOpacity>
-                      )}
-                    </View>
+                      </View>
+                    )}
                     <MultiLapTimeSeriesChart
                       laps={selectedLaps}
                       selectedSeries={chart.selectedSeries}
@@ -1096,12 +1096,13 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   sharedControlsSection: {
-    marginBottom: RacingTheme.spacing.lg,
+    marginBottom: RacingTheme.spacing.sm,
   },
   sharedControls: {
     backgroundColor: RacingTheme.colors.surface,
     borderRadius: RacingTheme.borderRadius.md,
-    padding: RacingTheme.spacing.md,
+    paddingVertical: RacingTheme.spacing.sm,
+    paddingHorizontal: RacingTheme.spacing.md,
     borderWidth: 1,
     borderColor: RacingTheme.colors.surfaceElevated,
   },
@@ -1109,8 +1110,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    marginBottom: RacingTheme.spacing.md,
+    marginBottom: RacingTheme.spacing.xs,
     flexWrap: 'wrap',
+    gap: RacingTheme.spacing.sm,
+  },
+  controlsRowLast: {
+    marginBottom: 0,
+  },
+  resetMapGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: RacingTheme.spacing.sm,
   },
   playbackGroup: {
@@ -1167,7 +1176,7 @@ const styles = StyleSheet.create({
   },
   sharedTrackMapContainer: {
     alignItems: 'center',
-    marginBottom: RacingTheme.spacing.lg,
+    marginBottom: RacingTheme.spacing.sm,
   },
   sharedTrackMap: {
     backgroundColor: RacingTheme.colors.surface,
@@ -1211,23 +1220,17 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   chartsSection: {
-    marginBottom: RacingTheme.spacing.lg,
+    marginBottom: RacingTheme.spacing.sm,
   },
   chartContainer: {
-    marginBottom: RacingTheme.spacing.lg,
+    marginBottom: RacingTheme.spacing.sm,
   },
   chartHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     marginBottom: RacingTheme.spacing.sm,
     paddingHorizontal: RacingTheme.spacing.sm,
-  },
-  chartTitle: {
-    fontSize: RacingTheme.typography.h4,
-    fontWeight: RacingTheme.typography.bold as any,
-    color: RacingTheme.colors.primary,
-    letterSpacing: 1,
   },
   removeChartButton: {
     backgroundColor: RacingTheme.colors.error,
