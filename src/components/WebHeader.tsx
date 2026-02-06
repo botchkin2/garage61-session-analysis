@@ -1,4 +1,5 @@
 import {RacingTheme} from '@src/theme';
+import {useAuth} from '@src/utils/authContext';
 import {usePathname, useRouter} from 'expo-router';
 import React, {useState} from 'react';
 import {
@@ -46,6 +47,7 @@ const MENU_ITEMS: MenuItem[] = [
 const WebHeader: React.FC = () => {
   const pathname = usePathname();
   const router = useRouter();
+  const {isAuthenticated, signIn, signOut} = useAuth();
   const [menuVisible, setMenuVisible] = useState(false);
   const [slideAnim] = useState(new Animated.Value(-width));
 
@@ -142,6 +144,27 @@ const WebHeader: React.FC = () => {
                 ))}
               </View>
               <View style={styles.menuFooter}>
+                {isAuthenticated ? (
+                  <TouchableOpacity
+                    onPress={() => {
+                      closeMenu();
+                      signOut();
+                    }}
+                    style={styles.authButton}>
+                    <Text style={styles.authButtonText}>Sign out</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => {
+                      closeMenu();
+                      signIn();
+                    }}
+                    style={styles.authButton}>
+                    <Text style={styles.authButtonText}>
+                      Sign in with Garage 61
+                    </Text>
+                  </TouchableOpacity>
+                )}
                 <Text style={styles.versionText}>Lap Analysis v1.0</Text>
               </View>
             </Animated.View>
@@ -275,6 +298,15 @@ const styles = StyleSheet.create({
     padding: 20,
     borderTopWidth: 1,
     borderTopColor: RacingTheme.colors.surfaceElevated,
+  },
+  authButton: {
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  authButtonText: {
+    fontSize: 14,
+    color: RacingTheme.colors.primary,
+    textAlign: 'center',
   },
   versionText: {
     fontSize: 12,

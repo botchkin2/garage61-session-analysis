@@ -3,6 +3,14 @@ import {API_CONFIG} from '@src/config/api';
 import {ApiError, Garage61User, LapsResponse} from '@src/types';
 import axios, {AxiosError, AxiosInstance, AxiosResponse} from 'axios';
 import * as FileSystem from 'expo-file-system';
+import {Platform} from 'react-native';
+import {refreshAuthTokens} from './auth';
+import {
+  getStoredAccessToken,
+  getStoredExpiresAt,
+  getStoredRefreshToken,
+  setStoredTokens,
+} from './oauthStorage';
 
 // Configure API endpoints
 const FIREBASE_HOSTING_URL = 'https://botracing-61.web.app/api/garage61'; // For all platforms
@@ -233,17 +241,16 @@ class ApiClient {
       timeout: API_CONFIG.TIMEOUT,
     });
 
-    // Add request interceptor to log requests
+    // Add request interceptor: send OAuth Bearer token when available (mobile)
     this.client.interceptors.request.use(async config => {
       const fullUrl = config.baseURL + config.url;
       console.log(
         `🌐 Firebase Proxy API Request: ${config.method?.toUpperCase()} ${fullUrl}`,
       );
-
-      // Always using Firebase proxy now
-      console.log(
-        '🔥 Using Firebase proxy authentication - no bearer token needed',
-      );
+      const token = await this.getStoredToken();
+      if (token && token !== 'firebase-proxy-auth') {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
       return config;
     });
 
@@ -276,8 +283,29 @@ class ApiClient {
 
         return response;
       },
-      (error: AxiosError) => {
+      async (error: AxiosError) => {
         const fullUrl = error.config?.baseURL + error.config?.url;
+        const status = error.response?.status;
+
+        // On 401, try to refresh OAuth token (mobile) and retry once
+        if (status === 401 && error.config && Platform.OS !== 'web') {
+          const refreshToken = await getStoredRefreshToken();
+          if (refreshToken) {
+            try {
+              const data = await refreshAuthTokens({
+                refresh_token: refreshToken,
+              });
+              await setStoredTokens(data);
+              if (error.config.headers) {
+                error.config.headers.Authorization = `Bearer ${data.access_token}`;
+              }
+              return this.client.request(error.config);
+            } catch {
+              // Refresh failed; fall through to reject
+            }
+          }
+        }
+
         console.error(`❌ Firebase Proxy API Error for ${fullUrl}:`, {
           message: error.message,
           code: error.code,
@@ -298,9 +326,18 @@ class ApiClient {
   }
 
   private async getStoredToken(): Promise<string | null> {
-    // Always use Firebase proxy authentication - no local token needed
-    // The Firebase function handles authentication with the server-side token
-    return 'firebase-proxy-auth';
+    // Web: proxy uses session cookie or fallback token
+    if (Platform.OS === 'web') {
+      return 'firebase-proxy-auth';
+    }
+    // Mobile: use OAuth access token from SecureStore if present and not expired
+    const accessToken = await getStoredAccessToken();
+    if (!accessToken) return 'firebase-proxy-auth';
+    const expiresAt = await getStoredExpiresAt();
+    if (expiresAt != null && Date.now() >= expiresAt - 60 * 1000) {
+      return 'firebase-proxy-auth'; // Expired; refresh will be tried on 401
+    }
+    return accessToken;
   }
 
   // Deduplicate requests to prevent redundant API calls

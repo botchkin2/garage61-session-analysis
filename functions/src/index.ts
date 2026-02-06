@@ -1,15 +1,26 @@
 import axios, {AxiosRequestConfig} from 'axios';
+import * as admin from 'firebase-admin';
 import {defineSecret} from 'firebase-functions/params';
 import {onRequest} from 'firebase-functions/v2/https';
+import {
+  handleAuthCallback,
+  handleAuthLogin,
+  handleAuthLogout,
+  handleAuthRefresh,
+  resolveAccessToken,
+} from './authHandlers';
+import {SESSION_COOKIE_NAME} from './oauth';
 
-// Type definitions for Express-style request/response
-interface Request {
-  method: string;
-  path: string;
-  query: any;
-  body: any;
-  headers: any;
+if (!admin.apps.length) {
+  admin.initializeApp();
 }
+
+const garage61ApiToken = defineSecret('GARAGE61_API_TOKEN');
+const garage61OauthClientId = defineSecret('GARAGE61_OAUTH_CLIENT_ID');
+const garage61OauthClientSecret = defineSecret('GARAGE61_OAUTH_CLIENT_SECRET');
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type ReqLike = any;
 
 interface Response {
   set(header: string, value: string): void;
@@ -19,114 +30,239 @@ interface Response {
   end(): void;
 }
 
-// Define the API token as a Firebase secret parameter
-const garage61ApiToken = defineSecret('GARAGE61_API_TOKEN');
+const AUTH_PREFIX = '/api/garage61/auth/';
+
+function parseCookies(
+  cookieHeader: string | undefined,
+): Record<string, string> {
+  if (!cookieHeader) return {};
+  return cookieHeader.split(';').reduce((acc, part) => {
+    const [key, ...v] = part.trim().split('=');
+    if (key && v.length) acc[key] = decodeURIComponent(v.join('=').trim());
+    return acc;
+  }, {} as Record<string, string>);
+}
+
+async function getJsonBody(req: ReqLike): Promise<Record<string, any>> {
+  if (req?.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
+    return req.body;
+  }
+  if (req?.rawBody) {
+    try {
+      return JSON.parse(req.rawBody.toString());
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
 
 export const garage61Proxy = onRequest(
-  {secrets: [garage61ApiToken]},
-  async (req: Request, res: Response) => {
-    // Set CORS headers
+  {
+    secrets: [
+      garage61ApiToken,
+      garage61OauthClientId,
+      garage61OauthClientSecret,
+    ],
+  },
+  async (req: ReqLike, res: Response) => {
     res.set('Access-Control-Allow-Origin', '*');
     res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.set('Access-Control-Allow-Credentials', 'true');
 
-    // Handle preflight requests
     if (req.method === 'OPTIONS') {
       res.status(200).end();
       return;
     }
 
-    try {
-      // Get API token from Firebase secret parameter
-      const apiToken = garage61ApiToken.value();
+    const path = req.path;
+    const isAuthRoute =
+      path === `${AUTH_PREFIX}login` ||
+      path === `${AUTH_PREFIX}callback` ||
+      path === `${AUTH_PREFIX}refresh` ||
+      path === `${AUTH_PREFIX}logout`;
 
-      if (!apiToken) {
-        console.error(
-          'GARAGE61_API_TOKEN not configured in Firebase Functions',
-        );
-        res.status(500).json({
-          error: 'API token not configured',
-          message:
-            'Please configure the Garage 61 API token as a secret parameter',
-        });
+    if (isAuthRoute) {
+      try {
+        const clientId = garage61OauthClientId.value();
+        const clientSecret = garage61OauthClientSecret.value();
+        if (!clientId || !clientSecret) {
+          res.status(500).json({
+            error: 'OAuth not configured',
+            message:
+              'GARAGE61_OAUTH_CLIENT_ID and GARAGE61_OAUTH_CLIENT_SECRET must be set',
+          });
+          return;
+        }
+        const cookies = parseCookies(req.headers.cookie);
+
+        if (path === `${AUTH_PREFIX}login` && req.method === 'GET') {
+          const redirectUri =
+            (Array.isArray(req.query.redirect_uri)
+              ? req.query.redirect_uri[0]
+              : req.query.redirect_uri) || '';
+          const result = await handleAuthLogin(redirectUri, clientId);
+          res.status(200).json(result);
+          return;
+        }
+
+        if (path === `${AUTH_PREFIX}callback` && req.method === 'POST') {
+          const body = await getJsonBody(req);
+          const result = await handleAuthCallback(
+            body,
+            clientId,
+            clientSecret,
+            cookies,
+          );
+          if (result.setCookie) {
+            res.set('Set-Cookie', result.setCookie);
+          }
+          if (result.redirect) {
+            res.status(200).json({success: true, redirect: result.redirect});
+          } else if (result.access_token) {
+            res.status(200).json({
+              access_token: result.access_token,
+              refresh_token: result.refresh_token,
+              expires_in: result.expires_in,
+            });
+          } else {
+            res.status(200).json({success: true});
+          }
+          return;
+        }
+
+        if (path === `${AUTH_PREFIX}refresh` && req.method === 'POST') {
+          const body = await getJsonBody(req);
+          const result = await handleAuthRefresh(
+            body,
+            clientId,
+            clientSecret,
+            cookies,
+          );
+          if (result === null) {
+            res.status(204).end();
+          } else {
+            res.status(200).json(result);
+          }
+          return;
+        }
+
+        if (path === `${AUTH_PREFIX}logout` && req.method === 'POST') {
+          await handleAuthLogout(cookies);
+          res.set(
+            'Set-Cookie',
+            `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`,
+          );
+          res.status(204).end();
+          return;
+        }
+      } catch (err: any) {
+        if (err?.status) {
+          res.status(err.status).json(err.body || {error: err.message});
+        } else {
+          console.error('Auth error:', err);
+          res.status(500).json({error: 'Auth failed', message: err?.message});
+        }
         return;
       }
+    }
 
-      // Construct the target URL by stripping the /api/garage61 prefix from req.path
-      const apiPath = req.path.replace(/^\/api\/garage61/, '');
-      const targetUrl = `https://garage61.net/api/v1${apiPath}`;
+    // Proxy: resolve token then forward to Garage 61 API
+    const apiPath = path.replace(/^\/api\/garage61/, '');
+    const targetUrl = `https://garage61.net/api/v1${apiPath}`;
 
-      // Prepare axios config
-      const axiosConfig: AxiosRequestConfig = {
-        method: req.method as any,
-        url: targetUrl,
-        headers: {
-          Authorization: `Bearer ${apiToken}`,
-          'Content-Type': 'application/json',
-          // Forward other headers but exclude host and some Firebase-specific ones
-          ...Object.fromEntries(
-            Object.entries(req.headers).filter(
-              ([key]) =>
-                ![
-                  'host',
-                  'connection',
-                  'keep-alive',
-                  'proxy-authenticate',
-                  'proxy-authorization',
-                  'te',
-                  'trailers',
-                  'transfer-encoding',
-                  'upgrade',
-                ].includes(key.toLowerCase()),
-            ),
+    const fallbackToken = garage61ApiToken.value() || null;
+    let clientId: string | undefined;
+    let clientSecret: string | undefined;
+    try {
+      clientId = garage61OauthClientId.value() || undefined;
+      clientSecret = garage61OauthClientSecret.value() || undefined;
+    } catch {
+      clientId = undefined;
+      clientSecret = undefined;
+    }
+    const token = await resolveAccessToken(
+      req.headers.authorization,
+      req.headers.cookie,
+      fallbackToken,
+      clientId,
+      clientSecret,
+    );
+
+    if (!token) {
+      res.status(401).json({
+        error: 'Unauthorized',
+        message: 'No valid token (Bearer, session, or server token)',
+      });
+      return;
+    }
+
+    const axiosConfig: AxiosRequestConfig = {
+      method: req.method as any,
+      url: targetUrl,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        ...Object.fromEntries(
+          Object.entries(req.headers).filter(
+            ([key]) =>
+              ![
+                'host',
+                'connection',
+                'keep-alive',
+                'proxy-authenticate',
+                'proxy-authorization',
+                'te',
+                'trailers',
+                'transfer-encoding',
+                'upgrade',
+                'authorization',
+                'cookie',
+              ].includes(key.toLowerCase()),
           ),
-        },
-        params: req.query,
-        timeout: 30000, // 30 second timeout
-      };
+        ),
+      },
+      params: req.query,
+      timeout: 30000,
+    };
 
-      // Add body for non-GET requests
-      if (req.method !== 'GET' && req.method !== 'HEAD' && req.body) {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      if (req.rawBody && req.rawBody.length) {
+        axiosConfig.data = req.rawBody;
+      } else if (
+        req.body &&
+        typeof req.body === 'object' &&
+        !Buffer.isBuffer(req.body)
+      ) {
         axiosConfig.data = req.body;
       }
+    }
 
-      console.log(`Proxying ${req.method} ${req.path} -> ${targetUrl}`);
-
+    try {
       const response = await axios(axiosConfig);
-
-      // Forward the response - handle CSV responses as text, others as JSON
       const contentType = response.headers['content-type'] || '';
       if (
         contentType.includes('text/csv') ||
         contentType.includes('application/csv')
       ) {
-        // For CSV responses, return raw text data
         res.set('Content-Type', contentType);
         res.status(response.status).send(response.data);
       } else {
-        // For JSON and other responses, return as JSON
         res.status(response.status).json(response.data);
       }
     } catch (error: any) {
-      console.error('Proxy error:', error);
-
       if (error.response) {
-        // The request was made and the server responded with a status code
-        // that falls out of the range of 2xx
         res.status(error.response.status).json(error.response.data);
       } else if (error.request) {
-        // The request was made but no response was received
         res.status(502).json({
           error: 'Bad Gateway',
-          message: 'No response received from Garage 61 API',
-          details: error.message,
+          message: 'No response from Garage 61 API',
         });
       } else {
-        // Something happened in setting up the request that triggered an Error
-        res.status(500).json({
-          error: 'Internal Server Error',
-          message: error.message,
-        });
+        res
+          .status(500)
+          .json({error: 'Internal Server Error', message: error.message});
       }
     }
   },

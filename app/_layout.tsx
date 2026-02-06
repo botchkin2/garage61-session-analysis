@@ -7,7 +7,7 @@ import 'react-native-reanimated';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 
 import {useColorScheme} from '@hooks/use-color-scheme';
-import {WebHeader} from '@src/components';
+import {OAuthDeepLinkHandler, WebHeader} from '@src/components';
 import {AuthProvider} from '@src/utils/authContext';
 import {queryClient} from '@src/utils/queryClient';
 
@@ -21,6 +21,7 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <OAuthDeepLinkHandler />
         <SafeAreaProvider>
           <ThemeProvider
             value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>

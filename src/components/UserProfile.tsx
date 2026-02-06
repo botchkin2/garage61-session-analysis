@@ -15,7 +15,7 @@ import {RacingButton, RacingCard, StatusBadge} from './RacingUI';
 declare const window: any;
 
 const UserProfile: React.FC = React.memo(() => {
-  const {user, isLoading, error, isAuthenticated} = useAuth();
+  const {user, isLoading, error, isAuthenticated, signIn} = useAuth();
 
   UserProfile.displayName = 'UserProfile';
   const [fadeAnim] = useState(new Animated.Value(1));
@@ -73,15 +73,12 @@ const UserProfile: React.FC = React.memo(() => {
           <View style={styles.centerContainer}>
             <Text style={styles.errorText}>AUTHENTICATION REQUIRED</Text>
             <Text style={styles.errorSubtext}>
-              Unable to connect to the service. Please contact support if this
-              issue persists.
+              Sign in with your Garage 61 account to view your driver profile
+              and lap data.
             </Text>
             <RacingButton
-              title='OPEN SETTINGS'
-              onPress={() => {
-                // This will be handled by the navigation header button
-                // For now, show instructions
-              }}
+              title='SIGN IN WITH GARAGE 61'
+              onPress={signIn}
               style={styles.retryButton}
             />
           </View>
