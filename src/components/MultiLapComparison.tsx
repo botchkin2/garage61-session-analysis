@@ -22,6 +22,8 @@ import {
   ProcessedLapData,
 } from './MultiLapTimeSeriesChart';
 
+const DESKTOP_BREAKPOINT = 900;
+
 interface ChartConfig {
   id: string;
   selectedSeries: string[];
@@ -54,6 +56,10 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
   const [zoomLevel, setZoomLevel] = useState(3);
   const [showTrackMap, setShowTrackMap] = useState(true);
   const [currentPosition, setCurrentPosition] = useState(0);
+  const [windowWidth, setWindowWidth] = useState(
+    () => Dimensions.get('window').width,
+  );
+  const isDesktop = windowWidth >= DESKTOP_BREAKPOINT;
 
   // Multiple charts state
   const [charts, setCharts] = useState<ChartConfig[]>([
@@ -132,7 +138,7 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
 
   useEffect(() => {
     const subscription = Dimensions.addEventListener('change', ({window}) => {
-      _setDimensions(window);
+      setWindowWidth(window.width);
     });
     return () => subscription?.remove();
   }, []);
@@ -416,25 +422,31 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
               </View>
             )}
 
-            {/* Lap Selection Controls */}
+            {/* Lap Selection Controls - 2x2 grid for vertical efficiency on mobile */}
             <View style={styles.selectionSection}>
-              <Text style={styles.sectionTitle}>LAP SELECTION</Text>
+              <Text style={[styles.sectionTitle, styles.selectionSectionTitle]}>
+                LAP SELECTION
+              </Text>
               <View style={styles.selectionControls}>
-                <RacingButton
-                  title='SELECT ALL'
-                  onPress={selectAllLaps}
-                  style={styles.selectionButton}
-                />
-                <RacingButton
-                  title='CLEAN LAPS'
-                  onPress={selectCleanLaps}
-                  style={styles.selectionButton}
-                />
-                <RacingButton
-                  title='CLEAR ALL'
-                  onPress={clearSelection}
-                  style={styles.selectionButton}
-                />
+                <View style={styles.selectionRow}>
+                  <RacingButton
+                    title='SELECT ALL'
+                    onPress={selectAllLaps}
+                    style={[styles.selectionButton, styles.selectionGridCell]}
+                  />
+                  <RacingButton
+                    title='CLEAN LAPS'
+                    onPress={selectCleanLaps}
+                    style={[styles.selectionButton, styles.selectionGridCell]}
+                  />
+                </View>
+                <View style={styles.selectionRow}>
+                  <RacingButton
+                    title='CLEAR ALL'
+                    onPress={clearSelection}
+                    style={[styles.selectionButton, styles.selectionGridCell]}
+                  />
+                </View>
               </View>
               <Text style={styles.selectionInfo}>
                 {selectedLaps.length} of {laps.length} laps selected for
@@ -442,18 +454,28 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
               </Text>
             </View>
 
-            {/* Shared Controls */}
-            {selectedLaps.length > 0 && (
+            {/* Shared Controls - hidden on desktop when map is shown (all controls move next to map) */}
+            {selectedLaps.length > 0 && (!isDesktop || !showTrackMap) && (
               <View style={styles.sharedControlsSection}>
                 <Text style={styles.sectionTitle}>SHARED CONTROLS</Text>
                 <View style={styles.sharedControls}>
                   {/* Row 1: Playback Controls */}
                   <View style={styles.controlsRow}>
-                    <TouchableOpacity
-                      style={styles.controlButton}
-                      onPress={resetPlayback}>
-                      <Text style={styles.controlButtonText}>🔄 RESET</Text>
-                    </TouchableOpacity>
+                    <View style={styles.resetMapGroup}>
+                      <TouchableOpacity
+                        style={styles.controlButton}
+                        onPress={resetPlayback}>
+                        <Text style={styles.controlButtonText}>🔄 RESET</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.controlButton,
+                          showTrackMap && styles.controlButtonActive,
+                        ]}
+                        onPress={toggleTrackMap}>
+                        <Text style={styles.controlButtonText}>🗺️ MAP</Text>
+                      </TouchableOpacity>
+                    </View>
 
                     <View style={styles.playbackGroup}>
                       <TouchableOpacity
@@ -509,19 +531,10 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
                         <Text style={styles.controlButtonText}>⏩</Text>
                       </TouchableOpacity>
                     </View>
-
-                    <TouchableOpacity
-                      style={[
-                        styles.controlButton,
-                        showTrackMap && styles.controlButtonActive,
-                      ]}
-                      onPress={toggleTrackMap}>
-                      <Text style={styles.controlButtonText}>🗺️ MAP</Text>
-                    </TouchableOpacity>
                   </View>
 
                   {/* Row 2: Zoom Controls */}
-                  <View style={styles.controlsRow}>
+                  <View style={[styles.controlsRow, styles.controlsRowLast]}>
                     <View style={styles.zoomGroup}>
                       <TouchableOpacity
                         style={styles.controlButton}
@@ -562,7 +575,7 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
                   return null;
                 }
 
-                return (
+                const mapBlock = (
                   <View style={styles.sharedTrackMapContainer}>
                     <View style={styles.sharedTrackMap}>
                       <Svg
@@ -646,6 +659,128 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
                     </View>
                   </View>
                 );
+
+                if (isDesktop) {
+                  return (
+                    <View style={styles.mapAndPlaybackRow}>
+                      {mapBlock}
+                      <View style={styles.allControlsColumn}>
+                        <Text style={styles.sectionTitle}>SHARED CONTROLS</Text>
+                        <View style={styles.sharedControls}>
+                          <View style={styles.controlsRow}>
+                            <View style={styles.resetMapGroup}>
+                              <TouchableOpacity
+                                style={styles.controlButton}
+                                onPress={resetPlayback}>
+                                <Text style={styles.controlButtonText}>
+                                  🔄 RESET
+                                </Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[
+                                  styles.controlButton,
+                                  showTrackMap && styles.controlButtonActive,
+                                ]}
+                                onPress={toggleTrackMap}>
+                                <Text style={styles.controlButtonText}>
+                                  🗺️ MAP
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                          <View style={styles.controlsRow}>
+                            <View style={styles.playbackGroup}>
+                              <TouchableOpacity
+                                style={styles.controlButton}
+                                onPress={() =>
+                                  updatePlaybackSpeed(
+                                    Math.max(-5.0, playbackSpeed - 0.5),
+                                  )
+                                }>
+                                <Text style={styles.controlButtonText}>⏪</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.controlButton}
+                                onPress={() =>
+                                  updatePosition(
+                                    Math.max(0, getCurrentPosition() - 50),
+                                  )
+                                }>
+                                <Text style={styles.controlButtonText}>⏮️</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[
+                                  styles.playButton,
+                                  isPlaying && styles.playButtonActive,
+                                ]}
+                                onPress={togglePlayback}>
+                                <Text style={styles.playButtonText}>
+                                  {isPlaying ? '⏸️' : '▶️'}
+                                </Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.controlButton}
+                                onPress={() =>
+                                  updatePosition(
+                                    Math.min(
+                                      (Array.from(lapDataMap.values())[0]
+                                        ?.totalPoints || 0) - 1,
+                                      getCurrentPosition() + 50,
+                                    ),
+                                  )
+                                }>
+                                <Text style={styles.controlButtonText}>⏭️</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.controlButton}
+                                onPress={() =>
+                                  updatePlaybackSpeed(
+                                    Math.min(5.0, playbackSpeed + 0.5),
+                                  )
+                                }>
+                                <Text style={styles.controlButtonText}>⏩</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                          <View
+                            style={[
+                              styles.controlsRow,
+                              styles.controlsRowLast,
+                            ]}>
+                            <View style={styles.zoomGroup}>
+                              <TouchableOpacity
+                                style={styles.controlButton}
+                                onPress={() =>
+                                  updateZoom(Math.max(1, zoomLevel - 1))
+                                }>
+                                <Text style={styles.controlButtonText}>
+                                  🔍-
+                                </Text>
+                              </TouchableOpacity>
+                              <Text style={styles.zoomText}>{zoomLevel}</Text>
+                              <TouchableOpacity
+                                style={styles.controlButton}
+                                onPress={() =>
+                                  updateZoom(Math.min(5, zoomLevel + 1))
+                                }>
+                                <Text style={styles.controlButtonText}>
+                                  🔍+
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                            <View style={styles.statusGroup}>
+                              <Text style={styles.statusText}>
+                                Speed: {playbackSpeed.toFixed(1)}x
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                }
+
+                return mapBlock;
               })()}
 
             {/* Charts */}
@@ -653,16 +788,15 @@ const MultiLapComparison: React.FC<MultiLapComparisonProps> = ({
               <View style={styles.chartsSection}>
                 {charts.map(chart => (
                   <View key={chart.id} style={styles.chartContainer}>
-                    <View style={styles.chartHeader}>
-                      <Text style={styles.chartTitle}>{chart.title}</Text>
-                      {charts.length > 1 && (
+                    {charts.length > 1 && (
+                      <View style={styles.chartHeader}>
                         <TouchableOpacity
                           style={styles.removeChartButton}
                           onPress={() => removeChart(chart.id)}>
                           <Text style={styles.removeChartButtonText}>✕</Text>
                         </TouchableOpacity>
-                      )}
-                    </View>
+                      </View>
+                    )}
                     <MultiLapTimeSeriesChart
                       laps={selectedLaps}
                       selectedSeries={chart.selectedSeries}
@@ -1079,15 +1213,26 @@ const styles = StyleSheet.create({
   selectionSection: {
     marginBottom: RacingTheme.spacing.lg,
   },
+  selectionSectionTitle: {
+    marginBottom: RacingTheme.spacing.sm,
+  },
   selectionControls: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: RacingTheme.spacing.sm,
+    flexDirection: 'column',
+    gap: RacingTheme.spacing.xs,
     marginBottom: RacingTheme.spacing.md,
+  },
+  selectionRow: {
+    flexDirection: 'row',
+    gap: RacingTheme.spacing.sm,
   },
   selectionButton: {
     flex: 1,
-    minWidth: 80,
+    minWidth: 0,
+    paddingVertical: RacingTheme.spacing.xs,
+  },
+  selectionGridCell: {
+    flex: 1,
+    minWidth: 0,
   },
   selectionInfo: {
     fontSize: RacingTheme.typography.caption,
@@ -1096,12 +1241,13 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   sharedControlsSection: {
-    marginBottom: RacingTheme.spacing.lg,
+    marginBottom: RacingTheme.spacing.sm,
   },
   sharedControls: {
     backgroundColor: RacingTheme.colors.surface,
     borderRadius: RacingTheme.borderRadius.md,
-    padding: RacingTheme.spacing.md,
+    paddingVertical: RacingTheme.spacing.sm,
+    paddingHorizontal: RacingTheme.spacing.md,
     borderWidth: 1,
     borderColor: RacingTheme.colors.surfaceElevated,
   },
@@ -1109,8 +1255,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    marginBottom: RacingTheme.spacing.md,
+    marginBottom: RacingTheme.spacing.xs,
     flexWrap: 'wrap',
+    gap: RacingTheme.spacing.sm,
+  },
+  controlsRowLast: {
+    marginBottom: 0,
+  },
+  resetMapGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: RacingTheme.spacing.sm,
   },
   playbackGroup: {
@@ -1165,9 +1319,29 @@ const styles = StyleSheet.create({
     minWidth: 20,
     textAlign: 'center',
   },
+  mapAndPlaybackRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: RacingTheme.spacing.lg,
+    marginBottom: RacingTheme.spacing.sm,
+    flexWrap: 'wrap',
+  },
+  playbackControlsColumn: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: RacingTheme.spacing.sm,
+  },
+  allControlsColumn: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    minWidth: 280,
+  },
   sharedTrackMapContainer: {
     alignItems: 'center',
-    marginBottom: RacingTheme.spacing.lg,
+    marginBottom: RacingTheme.spacing.sm,
   },
   sharedTrackMap: {
     backgroundColor: RacingTheme.colors.surface,
@@ -1211,23 +1385,17 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   chartsSection: {
-    marginBottom: RacingTheme.spacing.lg,
+    marginBottom: RacingTheme.spacing.sm,
   },
   chartContainer: {
-    marginBottom: RacingTheme.spacing.lg,
+    marginBottom: RacingTheme.spacing.sm,
   },
   chartHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     marginBottom: RacingTheme.spacing.sm,
     paddingHorizontal: RacingTheme.spacing.sm,
-  },
-  chartTitle: {
-    fontSize: RacingTheme.typography.h4,
-    fontWeight: RacingTheme.typography.bold as any,
-    color: RacingTheme.colors.primary,
-    letterSpacing: 1,
   },
   removeChartButton: {
     backgroundColor: RacingTheme.colors.error,

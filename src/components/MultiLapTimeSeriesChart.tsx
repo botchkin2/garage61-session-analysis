@@ -628,55 +628,6 @@ export const MultiLapTimeSeriesChart: React.FC<
           <Text style={styles.errorText}>No telemetry data available</Text>
         </View>
       )}
-      <View style={styles.header}>
-        <Text style={styles.title}>
-          {title} - {laps.length} Laps
-        </Text>
-        <View style={styles.seriesSelector}>
-          <Text style={styles.seriesLabel}>Data:</Text>
-          {[
-            {key: 'brake', label: 'Brake'},
-            {key: 'throttle', label: 'Throttle'},
-            {key: 'rpm', label: 'RPM'},
-            {key: 'steeringWheelAngle', label: 'Steering'},
-            {key: 'speed', label: 'Speed'},
-            {key: 'gear', label: 'Gear'},
-          ].map(series => {
-            const isSelected = selectedSeries.includes(series.key);
-            return onSeriesChange ? (
-              <TouchableOpacity
-                key={series.key}
-                style={[
-                  styles.seriesButton,
-                  isSelected && styles.seriesButtonActive,
-                ]}
-                onPress={() => {
-                  if (isSelected) {
-                    if (selectedSeries.length > 1) {
-                      onSeriesChange(
-                        selectedSeries.filter(s => s !== series.key),
-                      );
-                    }
-                  } else {
-                    onSeriesChange([...selectedSeries, series.key]);
-                  }
-                }}>
-                <Text
-                  style={[
-                    styles.seriesButtonText,
-                    isSelected && styles.seriesButtonTextActive,
-                  ]}>
-                  {isSelected ? '●' : '○'} {series.label}
-                </Text>
-              </TouchableOpacity>
-            ) : (
-              <Text key={series.key} style={styles.seriesLabel}>
-                {series.label}
-              </Text>
-            );
-          })}
-        </View>
-      </View>
 
       {/* Controls - only show when not using external controls */}
       {!useExternalControls && (
@@ -684,11 +635,21 @@ export const MultiLapTimeSeriesChart: React.FC<
           <View style={styles.transportBar}>
             {/* Row 1: Playback controls and map toggle */}
             <View style={styles.controlsRow}>
-              <TouchableOpacity
-                style={styles.miniButton}
-                onPress={resetPlayback}>
-                <Text style={styles.miniText}>🔄</Text>
-              </TouchableOpacity>
+              <View style={styles.resetMapGroup}>
+                <TouchableOpacity
+                  style={styles.miniButton}
+                  onPress={resetPlayback}>
+                  <Text style={styles.miniText}>🔄</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.miniButton,
+                    showTrackMap && styles.miniButtonActive,
+                  ]}
+                  onPress={() => setInternalShowTrackMap(!showTrackMap)}>
+                  <Text style={styles.miniText}>🗺️</Text>
+                </TouchableOpacity>
+              </View>
 
               <View style={styles.playbackGroup}>
                 <TouchableOpacity
@@ -759,15 +720,6 @@ export const MultiLapTimeSeriesChart: React.FC<
                   <Text style={styles.miniText}>⏩</Text>
                 </TouchableOpacity>
               </View>
-
-              <TouchableOpacity
-                style={[
-                  styles.miniButton,
-                  showTrackMap && styles.miniButtonActive,
-                ]}
-                onPress={() => setInternalShowTrackMap(!showTrackMap)}>
-                <Text style={styles.miniText}>🗺️</Text>
-              </TouchableOpacity>
             </View>
 
             {/* Row 2: Status and zoom controls */}
@@ -781,12 +733,21 @@ export const MultiLapTimeSeriesChart: React.FC<
                   {playbackSpeed.toFixed(1)}x
                 </Text>
                 <Text style={styles.statusText}>
-                  {Math.round(
-                    (getCurrentPosition() /
-                      (referenceLapData?.totalPoints || 1)) *
-                      100,
-                  )}
-                  %
+                  {referenceLapData && laps[0]?.lapTime
+                    ? (() => {
+                        const idx = Math.min(
+                          getCurrentPosition(),
+                          referenceLapData.raw.length - 1,
+                        );
+                        const point = referenceLapData.raw[Math.max(0, idx)];
+                        return point
+                          ? `${(
+                              (point.lapDistPct / 100) *
+                              laps[0].lapTime!
+                            ).toFixed(2)}s`
+                          : '—';
+                      })()
+                    : '—'}
                 </Text>
               </View>
 
@@ -928,52 +889,142 @@ export const MultiLapTimeSeriesChart: React.FC<
 
             <View style={styles.xAxis}>
               {(() => {
-                const labels = [];
-                const numLabels = 5;
+                const firstLapTime = laps[0]?.lapTime;
+                const data = visibleData.data;
+                const n = data.length;
 
-                for (let i = 0; i <= numLabels; i++) {
-                  const x = (i / numLabels) * chartWidth;
-                  const dataIndex = Math.floor(
-                    ((visibleData.data.length - 1) * i) / numLabels,
-                  );
-                  const dataPoint = visibleData.data[dataIndex];
+                if (!firstLapTime || firstLapTime <= 0 || n < 2) {
+                  // Fallback: show lap % when lap time unavailable
+                  return Array.from({length: 6}, (_, i) => {
+                    const dataIndex = Math.floor(((n - 1) * i) / 5);
+                    const pt = data[dataIndex];
+                    const x = (i / 5) * chartWidth;
+                    return (
+                      <Text
+                        key={`fb-${i}`}
+                        style={[styles.xAxisLabel, {left: x - 20}]}>
+                        {i === 0
+                          ? 'Now'
+                          : pt
+                          ? `${pt.lapDistPct.toFixed(1)}%`
+                          : ''}
+                      </Text>
+                    );
+                  });
+                }
 
-                  const label =
-                    i === 0
-                      ? 'Now'
-                      : dataPoint
-                      ? `${dataPoint.lapDistPct.toFixed(1)}%`
-                      : '';
+                const tStart = (data[0].lapDistPct / 100) * firstLapTime;
+                const tEnd = (data[n - 1].lapDistPct / 100) * firstLapTime;
 
-                  labels.push(
-                    <Text
-                      key={`x-${i}`}
-                      style={[styles.xAxisLabel, {left: x - 15}]}>
-                      {label}
-                    </Text>,
+                /** Map time (seconds into first lap) to x position in chart pixels */
+                const timeToX = (t: number): number => {
+                  const lapPct = (t / firstLapTime) * 100;
+                  if (lapPct <= data[0].lapDistPct) return 0;
+                  if (lapPct >= data[n - 1].lapDistPct) return chartWidth;
+                  for (let i = 0; i < n - 1; i++) {
+                    const a = data[i].lapDistPct;
+                    const b = data[i + 1].lapDistPct;
+                    if (lapPct >= a && lapPct <= b) {
+                      const fraction = b === a ? 0 : (lapPct - a) / (b - a);
+                      const index = i + fraction;
+                      return (index / (n - 1)) * chartWidth;
+                    }
+                  }
+                  return chartWidth;
+                };
+
+                const notchStep = 0.25;
+                const t0 = Math.ceil(tStart / notchStep) * notchStep;
+                const notches: React.ReactNode[] = [];
+                const labelSet = new Set<number>();
+
+                for (let t = t0; t <= tEnd; t += notchStep) {
+                  const x = timeToX(t);
+                  const isWholeSecond = Math.abs(t - Math.round(t)) < 0.01;
+                  if (isWholeSecond) {
+                    labelSet.add(Math.round(t));
+                  }
+                  notches.push(
+                    <View
+                      key={`notch-${t}`}
+                      style={[
+                        styles.xAxisNotch,
+                        isWholeSecond && styles.xAxisNotchMajor,
+                        {left: x - 1},
+                      ]}
+                    />,
                   );
                 }
-                return labels;
+
+                const labels: React.ReactNode[] = [];
+                labelSet.forEach(t => {
+                  const x = timeToX(t);
+                  labels.push(
+                    <Text
+                      key={`label-${t}`}
+                      style={[styles.xAxisLabel, {left: x - 20}]}>
+                      {t}s
+                    </Text>,
+                  );
+                });
+
+                return (
+                  <>
+                    {notches}
+                    {labels}
+                  </>
+                );
               })()}
             </View>
           </View>
         </View>
       </View>
 
-      <View style={styles.stats}>
-        <Text style={styles.statsText}>
-          Position:{' '}
-          {visibleData.data.length > 0
-            ? visibleData.data[0].lapDistPct.toFixed(1)
-            : 0}
-          % lap
-        </Text>
-        <Text style={styles.statsText}>
-          Laps: {laps.length} | Points:{' '}
-          {Array.from(lapDataMap.values())
-            .map(l => l.totalPoints)
-            .join(', ')}
-        </Text>
+      <View style={styles.dataSelectorBelow}>
+        <View style={styles.seriesSelector}>
+          <Text style={styles.seriesLabel}>Data:</Text>
+          {[
+            {key: 'brake', label: 'Brake'},
+            {key: 'throttle', label: 'Throttle'},
+            {key: 'rpm', label: 'RPM'},
+            {key: 'steeringWheelAngle', label: 'Steering'},
+            {key: 'speed', label: 'Speed'},
+            {key: 'gear', label: 'Gear'},
+          ].map(series => {
+            const isSelected = selectedSeries.includes(series.key);
+            return onSeriesChange ? (
+              <TouchableOpacity
+                key={series.key}
+                style={[
+                  styles.seriesButton,
+                  isSelected && styles.seriesButtonActive,
+                ]}
+                onPress={() => {
+                  if (isSelected) {
+                    if (selectedSeries.length > 1) {
+                      onSeriesChange(
+                        selectedSeries.filter(s => s !== series.key),
+                      );
+                    }
+                  } else {
+                    onSeriesChange([...selectedSeries, series.key]);
+                  }
+                }}>
+                <Text
+                  style={[
+                    styles.seriesButtonText,
+                    isSelected && styles.seriesButtonTextActive,
+                  ]}>
+                  {isSelected ? '●' : '○'} {series.label}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <Text key={series.key} style={styles.seriesLabel}>
+                {series.label}
+              </Text>
+            );
+          })}
+        </View>
       </View>
     </View>
   );
@@ -995,10 +1046,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  title: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#ffffff',
+  dataSelectorBelow: {
+    alignItems: 'center',
+    marginTop: 12,
     marginBottom: 8,
   },
   seriesSelector: {
@@ -1061,6 +1111,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexWrap: 'wrap',
+    gap: 8,
+  },
+  resetMapGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
   playbackGroup: {
@@ -1213,25 +1268,23 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#444',
   },
+  xAxisNotch: {
+    position: 'absolute',
+    top: 0,
+    width: 2,
+    height: 5,
+    backgroundColor: '#444',
+  },
+  xAxisNotchMajor: {
+    height: 10,
+  },
   xAxisLabel: {
     position: 'absolute',
-    top: 5,
+    top: 10,
     fontSize: 12,
     color: '#cccccc',
     textAlign: 'center',
     width: 40,
-  },
-  stats: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#333',
-  },
-  statsText: {
-    color: '#cccccc',
-    fontSize: 12,
   },
   legendSection: {
     marginTop: 16,
