@@ -1,7 +1,8 @@
 {
   "functions": {
     "source": "functions",
-    "runtime": "nodejs22"
+    "runtime": "nodejs22",
+    "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run build"]
   },
   "hosting": {
     "public": "dist",
@@ -9,7 +10,11 @@
     "rewrites": [
       {
         "source": "/api/garage61/**",
-        "function": "garage61Proxy"
+        "function": {
+          "functionId": "garage61Proxy",
+          "region": "us-central1",
+          "pinTag": true
+        }
       },
       {
         "source": "**",
