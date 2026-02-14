@@ -42,6 +42,8 @@ export interface ApiError {
   message: string;
   code?: string;
   details?: any;
+  /** Set when the API returns 401 (e.g. show sign-in screen instead of generic error). */
+  status?: number;
 }
 
 // Lap Data Types

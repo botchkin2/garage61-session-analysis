@@ -15,7 +15,8 @@ import {RacingButton, RacingCard, StatusBadge} from './RacingUI';
 declare const window: any;
 
 const UserProfile: React.FC = React.memo(() => {
-  const {user, isLoading, error, isAuthenticated} = useAuth();
+  const {user, isLoading, error, isAuthenticated, isUnauthorized, signIn} =
+    useAuth();
 
   UserProfile.displayName = 'UserProfile';
   const [fadeAnim] = useState(new Animated.Value(1));
@@ -48,6 +49,119 @@ const UserProfile: React.FC = React.memo(() => {
     );
   }
 
+  // 401 = not signed in: show enticing sign-in UI with product teaser
+  if (!isAuthenticated || !user || isUnauthorized) {
+    return (
+      <View style={styles.mainContainer}>
+        <ScrollView
+          style={styles.signInScroll}
+          contentContainerStyle={styles.signInScrollContent}
+          showsVerticalScrollIndicator={false}>
+          <View style={styles.signInHero}>
+            <Text style={styles.signInTitle}>Unlock your lap data</Text>
+            <Text style={styles.signInSubtitle}>
+              Sign in with Garage 61 to access session analysis, lap comparison,
+              and your driver profile.
+            </Text>
+          </View>
+
+          <RacingCard style={styles.signInTeaserCard} glow>
+            <Text style={styles.signInTeaserLabel}>
+              Session analysis preview
+            </Text>
+            <View style={styles.signInTeaserTable}>
+              <View style={styles.signInTeaserRow}>
+                <Text
+                  style={[styles.signInTeaserCell, styles.signInTeaserHeader]}>
+                  Lap
+                </Text>
+                <Text
+                  style={[styles.signInTeaserCell, styles.signInTeaserHeader]}>
+                  Time
+                </Text>
+                <Text
+                  style={[styles.signInTeaserCell, styles.signInTeaserHeader]}>
+                  S1
+                </Text>
+                <Text
+                  style={[styles.signInTeaserCell, styles.signInTeaserHeader]}>
+                  S2
+                </Text>
+                <Text
+                  style={[styles.signInTeaserCell, styles.signInTeaserHeader]}>
+                  S3
+                </Text>
+              </View>
+              <View style={styles.signInTeaserRow}>
+                <Text style={styles.signInTeaserCell}>1</Text>
+                <Text
+                  style={[styles.signInTeaserCell, styles.signInTeaserTime]}>
+                  1:32.456
+                </Text>
+                <Text style={styles.signInTeaserCell}>28.1</Text>
+                <Text style={styles.signInTeaserCell}>31.2</Text>
+                <Text
+                  style={[styles.signInTeaserCell, styles.signInTeaserBest]}>
+                  33.1
+                </Text>
+              </View>
+              <View style={styles.signInTeaserRow}>
+                <Text style={styles.signInTeaserCell}>2</Text>
+                <Text
+                  style={[styles.signInTeaserCell, styles.signInTeaserTime]}>
+                  1:31.892
+                </Text>
+                <Text
+                  style={[styles.signInTeaserCell, styles.signInTeaserBest]}>
+                  27.9
+                </Text>
+                <Text style={styles.signInTeaserCell}>31.0</Text>
+                <Text style={styles.signInTeaserCell}>32.9</Text>
+              </View>
+              <View style={styles.signInTeaserRow}>
+                <Text style={styles.signInTeaserCell}>3</Text>
+                <Text
+                  style={[
+                    styles.signInTeaserCell,
+                    styles.signInTeaserTime,
+                    styles.signInTeaserBest,
+                  ]}>
+                  1:31.654
+                </Text>
+                <Text style={styles.signInTeaserCell}>27.8</Text>
+                <Text style={styles.signInTeaserCell}>30.9</Text>
+                <Text style={styles.signInTeaserCell}>32.9</Text>
+              </View>
+            </View>
+            <Text style={styles.signInTeaserHint}>
+              Compare laps, sector times, and telemetry — your data from Garage
+              61
+            </Text>
+          </RacingCard>
+
+          <View style={styles.signInFeatures}>
+            <Text style={styles.signInFeature}>
+              ✓ Session analysis & lap tables
+            </Text>
+            <Text style={styles.signInFeature}>
+              ✓ Sector and optimal lap comparison
+            </Text>
+            <Text style={styles.signInFeature}>
+              ✓ Driver profile & subscription
+            </Text>
+          </View>
+
+          <RacingButton
+            title='SIGN IN WITH GARAGE 61'
+            onPress={signIn}
+            style={styles.signInButton}
+          />
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // Other errors (network, 5xx, etc.): show retry
   if (error) {
     return (
       <View style={styles.mainContainer}>
@@ -58,30 +172,6 @@ const UserProfile: React.FC = React.memo(() => {
             <RacingButton
               title='RETRY CONNECTION'
               onPress={() => window.location.reload()}
-              style={styles.retryButton}
-            />
-          </View>
-        </View>
-      </View>
-    );
-  }
-
-  if (!isAuthenticated || !user) {
-    return (
-      <View style={styles.mainContainer}>
-        <View style={styles.fullHeightContainer}>
-          <View style={styles.centerContainer}>
-            <Text style={styles.errorText}>AUTHENTICATION REQUIRED</Text>
-            <Text style={styles.errorSubtext}>
-              Unable to connect to the service. Please contact support if this
-              issue persists.
-            </Text>
-            <RacingButton
-              title='OPEN SETTINGS'
-              onPress={() => {
-                // This will be handled by the navigation header button
-                // For now, show instructions
-              }}
               style={styles.retryButton}
             />
           </View>
@@ -417,6 +507,90 @@ const styles = StyleSheet.create({
     fontSize: RacingTheme.typography.caption,
     color: RacingTheme.colors.primary,
     letterSpacing: 1,
+  },
+  signInScroll: {
+    flex: 1,
+  },
+  signInScrollContent: {
+    paddingHorizontal: RacingTheme.spacing.lg,
+    paddingTop: RacingTheme.spacing.xl,
+    paddingBottom: RacingTheme.spacing.xxxl,
+  },
+  signInHero: {
+    marginBottom: RacingTheme.spacing.xl,
+  },
+  signInTitle: {
+    fontSize: RacingTheme.typography.h1,
+    fontWeight: RacingTheme.typography.bold as any,
+    color: RacingTheme.colors.primary,
+    textAlign: 'center',
+    letterSpacing: 0.5,
+    marginBottom: RacingTheme.spacing.sm,
+  },
+  signInSubtitle: {
+    fontSize: RacingTheme.typography.body,
+    color: RacingTheme.colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    paddingHorizontal: RacingTheme.spacing.sm,
+  },
+  signInTeaserCard: {
+    marginBottom: RacingTheme.spacing.lg,
+    padding: RacingTheme.spacing.md,
+    overflow: 'hidden',
+  },
+  signInTeaserLabel: {
+    fontSize: RacingTheme.typography.small,
+    color: RacingTheme.colors.textTertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: RacingTheme.spacing.sm,
+  },
+  signInTeaserTable: {
+    borderWidth: 1,
+    borderColor: RacingTheme.colors.surfaceElevated,
+    borderRadius: RacingTheme.borderRadius.sm,
+    marginBottom: RacingTheme.spacing.sm,
+  },
+  signInTeaserRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: RacingTheme.colors.surfaceElevated,
+    paddingVertical: RacingTheme.spacing.xs,
+    paddingHorizontal: RacingTheme.spacing.sm,
+  },
+  signInTeaserCell: {
+    flex: 1,
+    fontSize: RacingTheme.typography.small,
+    color: RacingTheme.colors.textSecondary,
+    fontFamily: Platform.OS === 'web' ? 'monospace' : undefined,
+  },
+  signInTeaserHeader: {
+    color: RacingTheme.colors.textTertiary,
+    fontWeight: RacingTheme.typography.semibold as any,
+  },
+  signInTeaserTime: {
+    color: RacingTheme.colors.time,
+  },
+  signInTeaserBest: {
+    color: RacingTheme.colors.primary,
+  },
+  signInTeaserHint: {
+    fontSize: RacingTheme.typography.small,
+    color: RacingTheme.colors.textTertiary,
+    fontStyle: 'italic',
+  },
+  signInFeatures: {
+    marginBottom: RacingTheme.spacing.xl,
+  },
+  signInFeature: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.textSecondary,
+    marginBottom: RacingTheme.spacing.xs,
+  },
+  signInButton: {
+    alignSelf: 'center',
+    minWidth: 260,
   },
   errorText: {
     fontSize: RacingTheme.typography.h2,
