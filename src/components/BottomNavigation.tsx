@@ -1,6 +1,7 @@
 import {RacingTheme} from '@src/theme';
+import {useAuth} from '@src/utils/authContext';
 import {useRouter} from 'expo-router';
-import React, {useRef, useState} from 'react';
+import React, {useMemo, useRef, useState} from 'react';
 import {
   Animated,
   Dimensions,
@@ -34,27 +35,35 @@ const BottomNavigation: React.FC<BottomNavigationProps> = ({currentScreen}) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const slideAnim = useRef(new Animated.Value(isWeb ? 0 : height)).current; // Web: visible; mobile: start off-screen below
   const router = useRouter();
+  const {user, error: authError} = useAuth();
 
-  const navigationItems: NavigationItem[] = [
-    {
-      id: 'index',
-      label: 'Lap Analysis',
-      icon: '🏁',
-      route: '/',
-    },
-    {
-      id: 'driver',
-      label: 'Driver Profile',
-      icon: '👤',
-      route: '/driver-profile',
-    },
-    {
-      id: 'cache',
-      label: 'Cache Manager',
-      icon: '💾',
-      route: '/cache-management',
-    },
-  ];
+  // Show "Sign in" when we don't have a valid user (no user, or /me failed e.g. 401).
+  // On mobile the tab bar always shows this button (Sign in or Driver Profile) so it's never hidden.
+  const driverLabel = user && !authError ? 'Driver Profile' : 'Sign in';
+
+  const navigationItems: NavigationItem[] = useMemo(
+    () => [
+      {
+        id: 'index',
+        label: 'Lap Analysis',
+        icon: '🏁',
+        route: '/',
+      },
+      {
+        id: 'driver',
+        label: driverLabel,
+        icon: '👤',
+        route: '/driver-profile',
+      },
+      {
+        id: 'cache',
+        label: 'Cache Manager',
+        icon: '💾',
+        route: '/cache-management',
+      },
+    ],
+    [driverLabel],
+  );
 
   const toggleNavigation = () => {
     // Mobile: translateY 0 = panel visible at bottom, translateY height = panel hidden below screen
@@ -80,7 +89,7 @@ const BottomNavigation: React.FC<BottomNavigationProps> = ({currentScreen}) => {
     toggleNavigation();
     // Small delay to allow animation to complete
     setTimeout(() => {
-      router.push(item.route);
+      router.push(item.route as never);
     }, 150);
   };
 
@@ -113,10 +122,21 @@ const BottomNavigation: React.FC<BottomNavigationProps> = ({currentScreen}) => {
   const bottomInset = insets.bottom;
   return (
     <>
-      {/* Always-visible tab bar at bottom: tap to open full nav */}
+      {/* Always-visible tab bar: Sign in (or Profile) + Menu so Sign in is never hidden on Android */}
       <View
         style={[styles.mobileTabBar, {paddingBottom: bottomInset}]}
         {...panResponder.panHandlers}>
+        <TouchableOpacity
+          style={styles.mobileTabBarSignIn}
+          onPress={() => {
+            if (currentScreen !== 'driver') {
+              router.push('/driver-profile' as never);
+            }
+          }}
+          activeOpacity={0.9}>
+          <Text style={styles.mobileTabBarSignInIcon}>👤</Text>
+          <Text style={styles.mobileTabBarSignInLabel}>{driverLabel}</Text>
+        </TouchableOpacity>
         <TouchableOpacity
           style={styles.mobileTabBarTouchable}
           onPress={toggleNavigation}
@@ -197,18 +217,35 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
+    flexDirection: 'row',
     minHeight: 50,
     backgroundColor: RacingTheme.colors.surface,
     borderTopWidth: 1,
     borderTopColor: RacingTheme.colors.surfaceElevated,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
     zIndex: 999,
     elevation: 4,
     shadowColor: '#000',
     shadowOffset: {width: 0, height: -1},
     shadowOpacity: 0.15,
     shadowRadius: 2,
+  },
+  mobileTabBarSignIn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  mobileTabBarSignInIcon: {
+    fontSize: 18,
+    marginRight: 6,
+  },
+  mobileTabBarSignInLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: RacingTheme.colors.primary,
   },
   mobileTabBarTouchable: {
     flexDirection: 'row',

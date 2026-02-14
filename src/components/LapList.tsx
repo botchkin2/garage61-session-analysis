@@ -5,11 +5,12 @@ import {
   RacingDivider,
   StatusBadge,
   TimeRangeSelector,
-} from '@src/components';
+} from './RacingUI';
 import {useLaps} from '@src/hooks/useApiQueries';
 import {RacingTheme} from '@src/theme';
-import {Lap} from '@src/types';
+import {ApiError, Lap} from '@src/types';
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
+import {useRouter} from 'expo-router';
 import {
   ActivityIndicator,
   Animated,
@@ -57,7 +58,8 @@ const getSessionTypeName = (type: number): string => {
 const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
   const [loading, setLoading] = useState(true);
   const [queryEnabled, setQueryEnabled] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ApiError | null>(null);
+  const router = useRouter();
   const [eventGroups, setEventGroups] = useState<EventGroup[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedTimeRange, setSelectedTimeRange] = useState<number>(1); // Default to 1 day (24h)
@@ -176,7 +178,12 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
   // Handle errors from the query
   useEffect(() => {
     if (queryError) {
-      setError(queryError.message || 'Failed to load lap data');
+      setError({
+        message: queryError.message || 'Failed to load lap data',
+        code: queryError.code,
+        details: queryError.details,
+        status: queryError.status,
+      });
     } else {
       setError(null);
     }
@@ -240,15 +247,30 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
   }
 
   if (error) {
+    const isUnauthorized = error.status === 401;
     return (
       <View style={styles.mainContainer}>
         <View style={styles.fullHeightContainer}>
           <View style={styles.centerContainer}>
-            <Text style={styles.errorText}>TELEMETRY ERROR</Text>
-            <Text style={styles.errorText}>{error}</Text>
+            <Text style={styles.errorText}>
+              {isUnauthorized ? 'SIGN IN REQUIRED' : 'TELEMETRY ERROR'}
+            </Text>
+            <Text style={styles.errorSubtext}>
+              {isUnauthorized
+                ? 'Sign in with your Garage 61 account to view laps.'
+                : error.message}
+            </Text>
             <RacingButton
-              title='RETRY CONNECTION'
-              onPress={() => refetch()}
+              title={
+                isUnauthorized ? 'SIGN IN WITH GARAGE 61' : 'RETRY CONNECTION'
+              }
+              onPress={() => {
+                if (isUnauthorized) {
+                  router.replace('/driver-profile');
+                } else {
+                  refetch();
+                }
+              }}
               style={styles.refreshButton}
             />
           </View>
@@ -1194,6 +1216,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: RacingTheme.spacing.lg,
     letterSpacing: 1,
+  },
+  errorSubtext: {
+    fontSize: RacingTheme.typography.body,
+    color: RacingTheme.colors.text,
+    textAlign: 'center',
+    marginBottom: RacingTheme.spacing.lg,
   },
   bottomSpacing: {
     height: RacingTheme.spacing.xxxl, // Extra space for scrolling

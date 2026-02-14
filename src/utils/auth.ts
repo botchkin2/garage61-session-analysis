@@ -8,6 +8,11 @@ const PRODUCTION_ORIGIN = 'https://botracing-61.web.app';
 const API_BASE_FALLBACK = 'https://botracing-61.web.app/api/garage61';
 
 function getApiBase(): string {
+  // Local dev: use same env as api.ts so auth and API hit the emulator
+  const envBase =
+    typeof process !== 'undefined' &&
+    process.env?.EXPO_PUBLIC_GARAGE61_API_BASE;
+  if (envBase) return envBase;
   if (
     typeof window !== 'undefined' &&
     window.location?.origin === PRODUCTION_ORIGIN
@@ -31,10 +36,21 @@ export function getAuthCallbackRedirectUri(): string {
 export async function fetchAuthLoginUrl(): Promise<{url: string}> {
   const redirectUri = getAuthCallbackRedirectUri();
   const base = getApiBase();
-  const res = await fetch(
-    `${base}/auth/login?redirect_uri=${encodeURIComponent(redirectUri)}`,
-    {credentials: 'include'},
-  );
+  const url = `${base}/auth/login?redirect_uri=${encodeURIComponent(
+    redirectUri,
+  )}`;
+  let res: Response;
+  try {
+    res = await fetch(url, {credentials: 'include'});
+  } catch (e) {
+    const msg =
+      e instanceof TypeError && e.message === 'Failed to fetch'
+        ? `Cannot reach the API at ${base}. Deploy backend: firebase deploy --only functions (and once: firebase deploy --only hosting so /api/garage61 rewrites work). Check you're online and no extension is blocking the request.`
+        : e instanceof Error
+        ? e.message
+        : String(e);
+    throw new Error(msg);
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(
@@ -42,6 +58,15 @@ export async function fetchAuthLoginUrl(): Promise<{url: string}> {
     );
   }
   return res.json();
+}
+
+/** Check if the current request has an OAuth session (web: cookie; used to show Sign in vs Sign out). */
+export async function fetchAuthStatus(): Promise<{hasSession: boolean}> {
+  const res = await fetch(`${getApiBase()}/auth/status`, {
+    credentials: 'include',
+  });
+  const data = await res.json().catch(() => ({hasSession: false}));
+  return {hasSession: !!data?.hasSession};
 }
 
 export async function exchangeCodeForSession(params: {
@@ -104,7 +129,7 @@ export async function refreshAuthTokens(params: {
   refresh_token?: string;
   expires_in?: number;
 }> {
-  const res = await fetch(`${API_BASE}/auth/refresh`, {
+  const res = await fetch(`${getApiBase()}/auth/refresh`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(params),

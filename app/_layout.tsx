@@ -1,19 +1,35 @@
 import {DarkTheme, DefaultTheme, ThemeProvider} from '@react-navigation/native';
 import {QueryClientProvider} from '@tanstack/react-query';
-import {Stack} from 'expo-router';
+import {Stack, usePathname, useRouter} from 'expo-router';
 import {StatusBar} from 'expo-status-bar';
+import {useEffect} from 'react';
 import {Platform, StyleSheet, View} from 'react-native';
 import 'react-native-reanimated';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 
 import {useColorScheme} from '@hooks/use-color-scheme';
 import {OAuthDeepLinkHandler, WebHeader} from '@src/components';
-import {AuthProvider} from '@src/utils/authContext';
+import {AuthProvider, useAuth} from '@src/utils/authContext';
 import {queryClient} from '@src/utils/queryClient';
 
 export const unstable_settings = {
   initialRouteName: 'index',
 };
+
+/** When /me returns 401, redirect to sign-in (driver-profile) so new users see the signing view. */
+function UnauthorizedRedirect() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const {isUnauthorized, isLoading} = useAuth();
+
+  useEffect(() => {
+    if (isLoading || !isUnauthorized) return;
+    if (pathname === '/driver-profile' || pathname === '/auth/callback') return;
+    router.replace('/driver-profile');
+  }, [isLoading, isUnauthorized, pathname, router]);
+
+  return null;
+}
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -22,6 +38,7 @@ export default function RootLayout() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <OAuthDeepLinkHandler />
+        <UnauthorizedRedirect />
         <SafeAreaProvider>
           <ThemeProvider
             value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>

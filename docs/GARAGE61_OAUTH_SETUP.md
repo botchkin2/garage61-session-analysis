@@ -6,6 +6,150 @@ Reference: [Garage 61 – Developer Authentication](https://garage61.net/develop
 
 ---
 
+## Configuration (after you have Client ID & Secret)
+
+### 1. Set Firebase secrets
+
+The backend reads **Client ID** and **Client Secret** from Firebase Secret Manager. Set them with the Firebase CLI (run from your project root):
+
+```bash
+# OAuth app credentials from Garage 61
+firebase functions:secrets:set GARAGE61_OAUTH_CLIENT_ID
+# When prompted, paste your Client ID and press Enter.
+
+firebase functions:secrets:set GARAGE61_OAUTH_CLIENT_SECRET
+# When prompted, paste your Client Secret and press Enter.
+```
+
+You can also set values non-interactively:
+
+```bash
+echo -n "your-client-id" | firebase functions:secrets:set GARAGE61_OAUTH_CLIENT_ID
+echo -n "your-client-secret" | firebase functions:secrets:set GARAGE61_OAUTH_CLIENT_SECRET
+```
+
+**Note:** The proxy does **not** use a fallback shared token. Access requires OAuth (session cookie on web or Bearer token on mobile). You do **not** need to set `GARAGE61_API_TOKEN`.
+
+After changing secrets, **redeploy** the functions so they pick up the new values:
+
+```bash
+cd functions
+npm run build
+cd ..
+firebase deploy --only functions
+```
+
+**If "Sign in with Garage 61" gives "Failed to fetch" from localhost:** Ensure Hosting has been deployed at least once so the `/api/garage61/**` rewrite is active: `firebase deploy --only hosting` (or `firebase deploy`). The rewrite in `firebase.json` sends those requests to the function; without it, the request never reaches the backend.
+
+**If you get 404 on `https://YOUR_SITE.web.app/api/garage61/auth/login`:**
+
+1. Deploy **both** Hosting and Functions so the rewrite and function are in sync:
+
+   ```bash
+   cd functions && npm run build && cd ..
+   firebase deploy
+   ```
+
+   (Do not deploy only functions; the Hosting config with the rewrite must be deployed too.)
+
+2. Check that the rewrite is active: open **https://YOUR_SITE.web.app/api/garage61** in a browser. You should see `{"ok":true,"path":"/api/garage61","message":"garage61Proxy reached"}`. If you get 404 there too, the Hosting rewrite is not taking effect—confirm in [Firebase Console](https://console.firebase.google.com) → Hosting → your site that the release includes the `/api/garage61/**` → `garage61Proxy` rewrite.
+
+3. If your function is in a region other than `us-central1`, edit `firebase.json` and set `"region"` in the `function` block to that region (e.g. `europe-west1`).
+
+### 2. Register redirect URLs in Garage 61
+
+In the [Garage 61 developer authentication form](https://garage61.net/developer/authentication), add these **OAuth2 redirect URLs** (exactly as shown):
+
+| Use case           | Redirect URL                                 |
+| ------------------ | -------------------------------------------- |
+| Web (production)   | `https://botracing-61.web.app/auth/callback` |
+| Web (Expo / local) | `http://localhost:8080/auth/callback`        |
+| Mobile (Expo app)  | `botracing61://auth/callback`                |
+
+If your production URL is different, use that origin instead of `https://botracing-61.web.app` for the web production entry.
+
+### 3. Custom OAuth URLs (if Garage 61 gave different ones)
+
+The code uses these defaults:
+
+- **Authorization:** `https://garage61.net/app/account/oauth`
+- **Token:** `https://garage61.net/api/oauth/token`
+- **User Info (optional, OIDC):** `https://garage61.net/api/oauth/userinfo`
+
+If Garage 61 provided different URLs, either:
+
+- **Option A:** Edit `functions/src/oauth.ts` and replace the default strings for `GARAGE61_OAUTH_AUTH_URL` and `GARAGE61_OAUTH_TOKEN_URL`, or
+- **Option B:** Set environment variables when deploying (if your setup supports it), e.g. `GARAGE61_OAUTH_AUTH_URL` and `GARAGE61_OAUTH_TOKEN_URL`. The code already reads these from `process.env` if set.
+
+### 4. Scopes
+
+The login URL is built with scope `driving_data` per [Garage 61 permissions](https://garage61.net/developer/permissions). To use a different scope, change the `scope` argument in `functions/src/authHandlers.ts` where `buildAuthUrl` is called.
+
+### 5. Session cookie and Firebase Hosting
+
+When requests go through Firebase Hosting rewrites to Cloud Functions, **only the cookie named `__session` is forwarded**. All other cookies are stripped (for CDN cache behavior). The backend therefore uses `__session` as the web session cookie name (`functions/src/oauth.ts`). Responses that depend on the session set `Cache-Control: private` as required by [Firebase Hosting](https://firebase.google.com/docs/hosting/manage-cache#session_cookie). Do not rename this cookie unless you stop using Hosting rewrites for the API.
+
+---
+
+## Expected workflow (why deploy first)
+
+**Yes — you need to deploy the Firebase app (at least the functions) for OAuth to work** when using the default setup.
+
+**Reasoning:**
+
+1. **Where the OAuth logic runs**
+   Login URL, code exchange, refresh, and session handling all run in **Firebase Functions** (`/api/garage61/auth/*`). The client never sees the client secret; it only calls your backend.
+
+2. **Where the client points**
+   By default the app uses `https://botracing-61.web.app/api/garage61` as the API base (see `getApiBase()` in `src/utils/auth.ts` and `api.ts`). So from a browser at `http://localhost:8080`, every auth request (login, callback, refresh) goes to the **deployed** Hosting URL, which routes to your **deployed** function.
+
+3. **Where secrets live**
+   `GARAGE61_OAUTH_CLIENT_ID` and `GARAGE61_OAUTH_CLIENT_SECRET` are in Firebase Secret Manager. They are injected only into **deployed** functions (or into the emulator if you explicitly configure it). So the code that talks to Garage 61’s token endpoint must run in a deployed function (or emulator) that has access to those secrets.
+
+4. **Resulting workflow**
+   - Deploy functions once (with secrets set) so the live API can build auth URLs and exchange codes with Garage 61.
+   - Run the web app **locally** on port 8080 so the redirect URI matches what you registered at Garage 61 (`http://localhost:8080/auth/callback`).
+   - The local app still talks to the **deployed** API; no need to run the Functions emulator unless you’re changing function code.
+
+**Summary:** Set secrets → deploy functions → run `npm run web:oauth` and open http://localhost:8080. The browser is local; the backend is deployed.
+
+---
+
+## Test locally
+
+**Prerequisite:** Secrets set and functions deployed (see “Configuration” and “Expected workflow” above).
+
+1. **Garage 61** – In the [developer auth form](https://garage61.net/developer/authentication), add this redirect URL for local web (if not already added):
+
+   - `http://localhost:8080/auth/callback`
+
+   (Also add `https://botracing-61.web.app/auth/callback` and `botracing61://auth/callback` for production and mobile.)
+
+2. **Run the app on port 8080** (must match the redirect URL you registered):
+
+   ```bash
+   npm run web:oauth
+   ```
+
+   Or: `npx expo start --web --port 8080`
+   Then open **http://localhost:8080** in your browser.
+
+3. In the app, click **Sign in with Garage 61**. You’ll go to Garage 61, sign in, then come back to your app.
+
+**Note:** When testing on localhost, the session cookie is for the production domain, so you may not stay logged in after the redirect. To confirm the full “stay logged in” flow, use the deployed site (https://botracing-61.web.app) or the mobile app.
+
+### How the session is used (and how to verify)
+
+1. **After sign-in** the backend sets a cookie `g61_session=<sessionId>` (HttpOnly, Secure, SameSite=None) and stores the real tokens in Firestore under that session id.
+2. **On each API request** (laps, user, etc.) the app calls the proxy at `https://botracing-61.web.app/api/garage61/...`. On **web**, the client sends that cookie (`withCredentials: true`). The proxy reads the cookie, looks up the session in Firestore, and uses that user's access token to call Garage 61.
+3. **How to verify:** (1) Header shows **Sign out** (session detected). (2) DevTools → Network → any request to `.../api/garage61/...` → Request Headers should include `Cookie: g61_session=...`. (3) Laps/driver data should match the account you signed in with.
+
+**Cookie and localhost:** The session cookie uses `SameSite=None; Secure` so it can be set when the callback response is cross-origin (e.g. app on localhost calling the deployed backend). If you previously saw "Set-Cookie was blocked" (SameSite=Lax in a cross-site context), redeploy the functions so the new attribute is used.
+
+**Cookie not sent / 401 on localhost:** For cookie-based auth to work when the app runs on localhost, API requests must go to the **same origin that set the cookie** (the deployed proxy). Do **not** set `EXPO_PUBLIC_GARAGE61_API_BASE` to the Functions emulator URL when testing sign-in on web; leave it unset so the client calls `https://botracing-61.web.app/api/garage61`. Then the browser will send the `g61_session` cookie with those requests. In DevTools → Network → select a failing request to `/api/garage61/me` or `/laps` → Headers: under "Request Headers" you should see `Cookie: g61_session=...`. If the cookie is missing, the request is going to a different origin (e.g. emulator) or the cookie was never set (sign in again). If the cookie is present but you still get 401, the session may have expired in Firestore—sign in again and redeploy functions if needed.
+
+---
+
 ## 1. Current vs OAuth Architecture
 
 | Current                                                    | With OAuth                                                                          |
@@ -57,7 +201,7 @@ You may need to confirm with Garage 61 whether they support custom schemes and m
 From the [Garage 61 developer authentication page](https://garage61.net/developer/authentication) (and any API docs they provide), you need:
 
 1. **OAuth2 endpoints**
-   - Authorization URL (e.g. `https://garage61.net/oauth/authorize`).
+   - Authorization URL (e.g. `https://garage61.net/app/account/oauth`).
    - Token URL (e.g. `https://garage61.net/oauth/token`) for exchanging `code` → access/refresh tokens.
 2. **Client credentials**
    - Client ID (often public).
@@ -82,12 +226,12 @@ You need a few server-side pieces so the client never touches the client secret 
 
 ### 4.2 Suggested endpoints
 
-| Purpose                    | Method | Path (example)                                                 | Notes                                                                                                                                                     |
-| -------------------------- | ------ | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Start OAuth (get auth URL) | GET    | `/api/garage61/auth/login` or `/api/auth/garage61/login`       | Returns `{ url: "https://garage61.net/oauth/authorize?..." }` with `client_id`, `redirect_uri`, `scope`, `state`, and optionally `code_challenge` (PKCE). |
-| Callback (exchange code)   | POST   | `/api/garage61/auth/callback` or `/api/auth/garage61/callback` | Body: `{ code, redirect_uri, code_verifier? }`. Exchanges code for access + refresh token; creates session (or returns tokens for mobile).                |
-| Refresh token              | POST   | `/api/garage61/auth/refresh`                                   | Body: `{ refresh_token }`. Returns new access token (and optionally new refresh token).                                                                   |
-| Logout / revoke            | POST   | `/api/garage61/auth/logout`                                    | Optional: revoke token with Garage 61 if they support it; clear server session.                                                                           |
+| Purpose                    | Method | Path (example)                                                 | Notes                                                                                                                                                       |
+| -------------------------- | ------ | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Start OAuth (get auth URL) | GET    | `/api/garage61/auth/login` or `/api/auth/garage61/login`       | Returns `{ url: "https://garage61.net/app/account/oauth?..." }` with `client_id`, `redirect_uri`, `scope`, `state`, and optionally `code_challenge` (PKCE). |
+| Callback (exchange code)   | POST   | `/api/garage61/auth/callback` or `/api/auth/garage61/callback` | Body: `{ code, redirect_uri, code_verifier? }`. Exchanges code for access + refresh token; creates session (or returns tokens for mobile).                  |
+| Refresh token              | POST   | `/api/garage61/auth/refresh`                                   | Body: `{ refresh_token }`. Returns new access token (and optionally new refresh token).                                                                     |
+| Logout / revoke            | POST   | `/api/garage61/auth/logout`                                    | Optional: revoke token with Garage 61 if they support it; clear server session.                                                                             |
 
 For **web**, the flow is usually:
 
@@ -187,7 +331,7 @@ Once you have real Garage 61 OAuth URLs and scopes, you can implement the functi
 **GET /api/garage61/auth/login**
 
 - Query: `redirect_uri` (required), optional `state` (or generate on server).
-- Response: `{ url: "https://garage61.net/oauth/authorize?client_id=...&redirect_uri=...&response_type=code&scope=...&state=..." }`.
+- Response: `{ url: "https://garage61.net/app/account/oauth?client_id=...&redirect_uri=...&response_type=code&scope=...&state=..." }`.
 - If PKCE: generate `code_verifier` and `code_challenge`, store `code_verifier` keyed by `state`, and add `code_challenge` and `code_challenge_method=S256` to `url`.
 
 **POST /api/garage61/auth/callback**

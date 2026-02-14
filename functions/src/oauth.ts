@@ -5,9 +5,11 @@
 import * as crypto from 'crypto';
 
 export const GARAGE61_OAUTH_AUTH_URL =
-  process.env.GARAGE61_OAUTH_AUTH_URL || 'https://garage61.net/oauth/authorize';
+  process.env.GARAGE61_OAUTH_AUTH_URL ||
+  'https://garage61.net/app/account/oauth';
 export const GARAGE61_OAUTH_TOKEN_URL =
-  process.env.GARAGE61_OAUTH_TOKEN_URL || 'https://garage61.net/oauth/token';
+  process.env.GARAGE61_OAUTH_TOKEN_URL ||
+  'https://garage61.net/api/oauth/token';
 
 /** Allowed redirect URIs (must match what is registered in Garage 61 app) */
 export const ALLOWED_REDIRECT_URIS = [
@@ -17,7 +19,12 @@ export const ALLOWED_REDIRECT_URIS = [
   'botracing61://auth/callback',
 ];
 
-export const SESSION_COOKIE_NAME = 'g61_session';
+/**
+ * Must be __session: Firebase Hosting strips all other cookies when rewriting to
+ * Cloud Functions. Only __session is forwarded. See:
+ * https://firebase.google.com/docs/hosting/manage-cache#session_cookie
+ */
+export const SESSION_COOKIE_NAME = '__session';
 export const SESSION_MAX_AGE_DAYS = 30;
 
 export function generateState(): string {

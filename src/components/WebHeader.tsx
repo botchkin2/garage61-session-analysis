@@ -47,7 +47,7 @@ const MENU_ITEMS: MenuItem[] = [
 const WebHeader: React.FC = () => {
   const pathname = usePathname();
   const router = useRouter();
-  const {isAuthenticated, signIn, signOut} = useAuth();
+  const {hasOAuthSession, signIn, signOut} = useAuth();
   const [menuVisible, setMenuVisible] = useState(false);
   const [slideAnim] = useState(new Animated.Value(-width));
 
@@ -144,7 +144,7 @@ const WebHeader: React.FC = () => {
                 ))}
               </View>
               <View style={styles.menuFooter}>
-                {isAuthenticated ? (
+                {hasOAuthSession ? (
                   <TouchableOpacity
                     onPress={() => {
                       closeMenu();

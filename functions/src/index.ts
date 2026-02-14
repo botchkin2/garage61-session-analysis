@@ -3,6 +3,7 @@ import * as admin from 'firebase-admin';
 import {defineSecret} from 'firebase-functions/params';
 import {onRequest} from 'firebase-functions/v2/https';
 import {
+  getAuthStatus,
   handleAuthCallback,
   handleAuthLogin,
   handleAuthLogout,
@@ -15,7 +16,6 @@ if (!admin.apps.length) {
   admin.initializeApp();
 }
 
-const garage61ApiToken = defineSecret('GARAGE61_API_TOKEN');
 const garage61OauthClientId = defineSecret('GARAGE61_OAUTH_CLIENT_ID');
 const garage61OauthClientSecret = defineSecret('GARAGE61_OAUTH_CLIENT_SECRET');
 
@@ -44,57 +44,121 @@ function parseCookies(
 }
 
 async function getJsonBody(req: ReqLike): Promise<Record<string, any>> {
+  // Cloud Run / v2: body is often in rawBody; prefer parsing it so we get the POST payload
+  if (req?.rawBody && req.rawBody.length > 0) {
+    try {
+      const parsed = JSON.parse(req.rawBody.toString());
+      if (parsed && typeof parsed === 'object') return parsed;
+    } catch {
+      // fall through
+    }
+  }
   if (req?.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
     return req.body;
-  }
-  if (req?.rawBody) {
-    try {
-      return JSON.parse(req.rawBody.toString());
-    } catch {
-      return {};
-    }
   }
   return {};
 }
 
 export const garage61Proxy = onRequest(
   {
-    secrets: [
-      garage61ApiToken,
-      garage61OauthClientId,
-      garage61OauthClientSecret,
-    ],
+    secrets: [garage61OauthClientId, garage61OauthClientSecret],
   },
   async (req: ReqLike, res: Response) => {
-    res.set('Access-Control-Allow-Origin', '*');
+    // With credentials (cookies), browser requires a specific origin; * is invalid
+    const origin = req.headers.origin;
+    const allowedOrigins = [
+      'https://botracing-61.web.app',
+      'https://botracing-61.firebaseapp.com',
+      'http://localhost:8080',
+      'http://localhost:8081',
+      'http://localhost:19006',
+    ];
+    const allowOrigin =
+      origin && allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+    res.set('Access-Control-Allow-Origin', allowOrigin);
     res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     res.set('Access-Control-Allow-Credentials', 'true');
+    // Required when using __session: responses must not be cached across users (Hosting uses __session in cache key)
+    res.set('Cache-Control', 'private');
 
     if (req.method === 'OPTIONS') {
       res.status(200).end();
       return;
     }
 
-    const path = req.path;
+    // Path: Hosting/Cloud Run may send full URL, path+query, or path only; normalize to pathname
+    let path =
+      req.path ||
+      (typeof req.url === 'string' ? req.url.split('?')[0] : '') ||
+      '';
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      try {
+        path = new URL(path).pathname;
+      } catch {
+        path = '';
+      }
+    }
+    if (path.startsWith('/auth/') && !path.startsWith('/api/garage61/')) {
+      path = '/api/garage61' + path;
+    }
+
+    // Health check: if this returns 200, the Hosting rewrite is working
+    if (
+      (path === '/api/garage61' || path === '/api/garage61/') &&
+      req.method === 'GET'
+    ) {
+      res.status(200).json({ok: true, path, message: 'garage61Proxy reached'});
+      return;
+    }
+
     const isAuthRoute =
       path === `${AUTH_PREFIX}login` ||
       path === `${AUTH_PREFIX}callback` ||
       path === `${AUTH_PREFIX}refresh` ||
-      path === `${AUTH_PREFIX}logout`;
+      path === `${AUTH_PREFIX}logout` ||
+      path === `${AUTH_PREFIX}status`;
 
     if (isAuthRoute) {
-      try {
-        const clientId = garage61OauthClientId.value();
-        const clientSecret = garage61OauthClientSecret.value();
-        if (!clientId || !clientSecret) {
-          res.status(500).json({
-            error: 'OAuth not configured',
-            message:
-              'GARAGE61_OAUTH_CLIENT_ID and GARAGE61_OAUTH_CLIENT_SECRET must be set',
-          });
-          return;
+      // GET /auth/status: no secrets needed; tells client if they have an OAuth session (cookie)
+      if (path === `${AUTH_PREFIX}status` && req.method === 'GET') {
+        try {
+          const status = await getAuthStatus(req.headers.cookie);
+          res.status(200).json(status);
+        } catch (e) {
+          res.status(200).json({hasSession: false});
         }
+        return;
+      }
+
+      let clientId: string;
+      let clientSecret: string;
+      try {
+        clientId = garage61OauthClientId.value() ?? '';
+        clientSecret = garage61OauthClientSecret.value() ?? '';
+      } catch (secretErr: any) {
+        console.error(
+          'Auth route: secrets unavailable',
+          secretErr?.message || secretErr,
+        );
+        res.status(500).json({
+          error: 'OAuth not configured',
+          message:
+            'Secrets unavailable. Set GARAGE61_OAUTH_CLIENT_ID and GARAGE61_OAUTH_CLIENT_SECRET with firebase functions:secrets:set, then redeploy.',
+          detail: secretErr?.message || String(secretErr),
+        });
+        return;
+      }
+      if (!clientId || !clientSecret) {
+        res.status(500).json({
+          error: 'OAuth not configured',
+          message:
+            'GARAGE61_OAUTH_CLIENT_ID and GARAGE61_OAUTH_CLIENT_SECRET must be set',
+        });
+        return;
+      }
+
+      try {
         const cookies = parseCookies(req.headers.cookie);
 
         if (path === `${AUTH_PREFIX}login` && req.method === 'GET') {
@@ -152,27 +216,46 @@ export const garage61Proxy = onRequest(
           await handleAuthLogout(cookies);
           res.set(
             'Set-Cookie',
-            `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`,
+            `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=0`,
           );
           res.status(204).end();
           return;
         }
       } catch (err: any) {
         if (err?.status) {
+          if (err.status === 400) {
+            console.warn('Auth callback 400:', err.body || err.message);
+          }
           res.status(err.status).json(err.body || {error: err.message});
         } else {
-          console.error('Auth error:', err);
-          res.status(500).json({error: 'Auth failed', message: err?.message});
+          console.error('Auth error:', err?.message || err, err?.stack);
+          res.status(500).json({
+            error: 'Auth failed',
+            message: err?.message || String(err),
+            hint:
+              err?.message?.includes('Firestore') || err?.code === 7
+                ? 'Ensure Firestore is enabled in Firebase Console (Build → Firestore).'
+                : undefined,
+          });
         }
         return;
       }
     }
 
-    // Proxy: resolve token then forward to Garage 61 API
+    // Proxy: resolve token then forward to Garage 61 API (OAuth only; no fallback token)
     const apiPath = path.replace(/^\/api\/garage61/, '');
     const targetUrl = `https://garage61.net/api/v1${apiPath}`;
 
-    const fallbackToken = garage61ApiToken.value() || null;
+    const cookieHeader = req.headers.cookie ?? req.headers.Cookie;
+    console.log('[garage61Proxy] API request', {
+      path: apiPath,
+      cookiePresent: !!cookieHeader,
+      cookieLength: cookieHeader ? String(cookieHeader).length : 0,
+      authHeaderPresent: !!(
+        req.headers.authorization ?? req.headers.Authorization
+      ),
+    });
+
     let clientId: string | undefined;
     let clientSecret: string | undefined;
     try {
@@ -183,17 +266,23 @@ export const garage61Proxy = onRequest(
       clientSecret = undefined;
     }
     const token = await resolveAccessToken(
-      req.headers.authorization,
-      req.headers.cookie,
-      fallbackToken,
+      (req.headers.authorization ?? req.headers.Authorization) as
+        | string
+        | undefined,
+      cookieHeader as string | undefined,
+      null, // no fallback: require OAuth (session cookie or Bearer)
       clientId,
       clientSecret,
     );
 
     if (!token) {
+      console.warn('[garage61Proxy] 401 Unauthorized', {
+        path: apiPath,
+        reason: 'resolveAccessToken returned null',
+      });
       res.status(401).json({
         error: 'Unauthorized',
-        message: 'No valid token (Bearer, session, or server token)',
+        message: 'Sign in with Garage 61 to access this resource.',
       });
       return;
     }

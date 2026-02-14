@@ -14,7 +14,6 @@ import {
 
 const COLLECTION_STATE = 'oauth_state';
 const COLLECTION_SESSIONS = 'oauth_sessions';
-const STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 function getFirestore() {
   return admin.firestore();
@@ -50,7 +49,7 @@ export async function handleAuthLogin(
     redirectUri,
     state,
     codeChallenge,
-    scope: 'read', // Adjust when Garage 61 documents scopes
+    scope: 'driving_data', // per https://garage61.net/developer/permissions
   });
   return {url};
 }
@@ -99,21 +98,60 @@ export async function handleAuthCallback(
   }
   await stateRef.delete();
 
-  const tokenRes = await axios.post<TokenResponse>(
-    GARAGE61_OAUTH_TOKEN_URL,
-    new URLSearchParams({
-      grant_type: 'authorization_code',
-      code,
-      redirect_uri,
-      client_id: clientId,
-      client_secret: clientSecret,
-      code_verifier: codeVerifier,
-    }),
-    {
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-      timeout: 15000,
-    },
-  );
+  let tokenRes;
+  try {
+    tokenRes = await axios.post<TokenResponse>(
+      GARAGE61_OAUTH_TOKEN_URL,
+      new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri,
+        client_id: clientId,
+        client_secret: clientSecret,
+        code_verifier: codeVerifier,
+      }),
+      {
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        timeout: 15000,
+        validateStatus: () => true, // so we can inspect any status
+      },
+    );
+  } catch (err: any) {
+    const status = err?.response?.status;
+    const url = err?.config?.url || GARAGE61_OAUTH_TOKEN_URL;
+    console.error(
+      'Token exchange failed:',
+      url,
+      status,
+      err?.response?.data || err?.message,
+    );
+    throw {
+      status: 502,
+      body: {
+        error: 'Token exchange failed',
+        message:
+          status === 405
+            ? `Garage 61 token URL returned 405 Method Not Allowed. Check their docs for the correct token URL (current: ${GARAGE61_OAUTH_TOKEN_URL}).`
+            : err?.message || String(err),
+      },
+    };
+  }
+
+  if (tokenRes.status !== 200) {
+    console.error('Token exchange non-200:', tokenRes.status, tokenRes.data);
+    const is405 = tokenRes.status === 405;
+    throw {
+      status: 502,
+      body: {
+        error: 'Token exchange failed',
+        message: is405
+          ? `Garage 61 token URL returned 405 Method Not Allowed. Use the exact token URL from their docs (current: ${GARAGE61_OAUTH_TOKEN_URL}).`
+          : `Garage 61 token URL returned ${tokenRes.status}. Check token URL and request format.`,
+        detail: tokenRes.data,
+      },
+    };
+  }
+
   const data = tokenRes.data;
   if (!data.access_token) {
     throw {status: 502, body: {error: 'No access_token in Garage 61 response'}};
@@ -142,7 +180,7 @@ export async function handleAuthCallback(
     });
 
   const maxAge = SESSION_MAX_AGE_DAYS * 24 * 60 * 60;
-  const setCookieValue = `${SESSION_COOKIE_NAME}=${sessionId}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
+  const setCookieValue = `${SESSION_COOKIE_NAME}=${sessionId}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=${maxAge}`;
   return {
     success: true,
     redirect: '/',
@@ -232,8 +270,31 @@ export async function handleAuthLogout(
 export function getSessionCookieFromRequest(
   cookieHeader: string | undefined,
 ): string | null {
+  if (!cookieHeader) {
+    return null;
+  }
   const cookies = parseCookies(cookieHeader);
-  return cookies[SESSION_COOKIE_NAME] ?? null;
+  const value = cookies[SESSION_COOKIE_NAME] ?? null;
+  if (!value && Object.keys(cookies).length > 0) {
+    console.log('[auth] Cookie header present but no session cookie', {
+      sessionCookieName: SESSION_COOKIE_NAME,
+      cookieKeys: Object.keys(cookies),
+    });
+  }
+  return value;
+}
+
+/** Check if the request has a valid OAuth session (for UI: show Sign in vs Sign out). */
+export async function getAuthStatus(
+  cookieHeader: string | undefined,
+): Promise<{hasSession: boolean}> {
+  const sessionId = getSessionCookieFromRequest(cookieHeader);
+  if (!sessionId) return {hasSession: false};
+  const snap = await getFirestore()
+    .collection(COLLECTION_SESSIONS)
+    .doc(sessionId)
+    .get();
+  return {hasSession: snap.exists};
 }
 
 /** Get Garage 61 access token: Bearer header, or session from cookie (with optional refresh), or fallback */
@@ -245,16 +306,31 @@ export async function resolveAccessToken(
   clientSecret?: string,
 ): Promise<string | null> {
   if (authHeader?.startsWith('Bearer ')) {
+    console.log('[auth] resolveAccessToken: using Bearer header');
     return authHeader.slice(7).trim();
   }
   const sessionId = getSessionCookieFromRequest(cookieHeader);
-  if (!sessionId) return fallbackToken;
+  if (!sessionId) {
+    console.log('[auth] resolveAccessToken: no session cookie', {
+      cookieHeaderPresent: !!cookieHeader,
+    });
+    return fallbackToken;
+  }
 
   const sessionRef = getFirestore()
     .collection(COLLECTION_SESSIONS)
     .doc(sessionId);
   const sessionSnap = await sessionRef.get();
-  if (!sessionSnap.exists) return fallbackToken;
+  if (!sessionSnap.exists) {
+    console.warn(
+      '[auth] resolveAccessToken: session doc not found in Firestore',
+      {
+        sessionIdPrefix: sessionId.slice(0, 8) + '…',
+        collection: COLLECTION_SESSIONS,
+      },
+    );
+    return fallbackToken;
+  }
 
   const session = sessionSnap.data()!;
   let accessToken = session.accessToken as string;
@@ -288,10 +364,18 @@ export async function resolveAccessToken(
           refreshToken: data.refresh_token ?? session.refreshToken,
           expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000,
         });
+        console.log('[auth] resolveAccessToken: token refreshed from session');
       }
-    } catch {
+    } catch (err) {
+      console.warn(
+        '[auth] resolveAccessToken: refresh failed',
+        (err as Error)?.message,
+      );
       return fallbackToken;
     }
   }
+  console.log('[auth] resolveAccessToken: using session token', {
+    sessionIdPrefix: sessionId.slice(0, 8) + '…',
+  });
   return accessToken;
 }

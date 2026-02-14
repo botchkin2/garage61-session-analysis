@@ -15,8 +15,11 @@ import {
 // Configure API endpoints
 const FIREBASE_HOSTING_URL = 'https://botracing-61.web.app/api/garage61'; // For all platforms
 
-// Always use Firebase proxy for all platforms (web and mobile)
-const API_BASE_URL = FIREBASE_HOSTING_URL;
+// Local dev: set EXPO_PUBLIC_GARAGE61_API_BASE in .env.local to hit the Functions emulator
+const API_BASE_URL =
+  (typeof process !== 'undefined' &&
+    process.env?.EXPO_PUBLIC_GARAGE61_API_BASE) ||
+  FIREBASE_HOSTING_URL;
 
 // Global request cache to ensure proper deduplication
 // For React Native, we use a module-level variable since HMR works differently
@@ -239,7 +242,15 @@ class ApiClient {
         'Content-Type': 'application/json',
       },
       timeout: API_CONFIG.TIMEOUT,
+      // Web: send session cookie so the proxy uses the OAuth session instead of fallback token
+      withCredentials: Platform.OS === 'web',
     });
+
+    if (Platform.OS === 'web' && API_BASE_URL !== FIREBASE_HOSTING_URL) {
+      console.warn(
+        '⚠️ API base is not production. Session cookie is set for botracing-61.web.app; if you get 401, ensure EXPO_PUBLIC_GARAGE61_API_BASE is unset so requests (and cookies) go to the same origin.',
+      );
+    }
 
     // Add request interceptor: send OAuth Bearer token when available (mobile)
     this.client.interceptors.request.use(async config => {
@@ -306,6 +317,8 @@ class ApiClient {
           }
         }
 
+        // Don't redirect or invalidate here—avoids render loops. Let the UI show "Sign in" and user tap to go to /driver-profile.
+
         console.error(`❌ Firebase Proxy API Error for ${fullUrl}:`, {
           message: error.message,
           code: error.code,
@@ -318,6 +331,7 @@ class ApiClient {
           message: error.message || 'An unexpected error occurred',
           code: error.code,
           details: error.response?.data,
+          status: status,
         };
 
         return Promise.reject(apiError);
