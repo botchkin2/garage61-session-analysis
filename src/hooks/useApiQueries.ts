@@ -4,6 +4,7 @@ import {useQuery} from '@tanstack/react-query';
 // Query keys for consistent cache management
 export const queryKeys = {
   user: ['user'] as const,
+  tracks: ['tracks'] as const,
   laps: (params?: Record<string, any>) => {
     if (!params) {
       return ['laps'];
@@ -46,6 +47,19 @@ export const useUser = () => {
     },
     // Only run if we have a chance of succeeding
     enabled: true, // We'll let it fail gracefully if no token
+  });
+};
+
+// Tracks list (for track selector; required by laps API)
+export const useTracks = (options?: {enabled?: boolean}) => {
+  return useQuery({
+    queryKey: queryKeys.tracks,
+    queryFn: () => apiClient.getTracks(),
+    staleTime: 60 * 60 * 1000, // 1 hour
+    gcTime: 2 * 60 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    enabled: options?.enabled ?? true,
   });
 };
 

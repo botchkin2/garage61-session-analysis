@@ -6,7 +6,9 @@ import {
   Animated,
   Dimensions,
   Easing,
+  Image,
   Modal,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -91,6 +93,14 @@ const WebHeader: React.FC = () => {
             <View style={styles.hamburgerLine} />
           </View>
         </TouchableOpacity>
+        {Platform.OS === 'web' && (
+          <Image
+            source={{uri: '/favicon.png'}}
+            style={styles.headerLogo}
+            resizeMode='contain'
+            accessibilityLabel='Lap Analysis logo'
+          />
+        )}
         <Text style={styles.title} numberOfLines={1}>
           {title}
         </Text>
@@ -198,6 +208,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 8,
+  },
+  headerLogo: {
+    width: 40,
+    height: 40,
+    marginRight: 12,
   },
   hamburgerIcon: {
     width: 20,

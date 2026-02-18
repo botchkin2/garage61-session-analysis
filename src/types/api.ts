@@ -96,6 +96,10 @@ export interface LapsResponse {
   total: number;
 }
 
+export interface TracksResponse {
+  items: TrackInfo[];
+}
+
 export interface UserInfo {
   id: string;
   slug: string;
@@ -120,7 +124,12 @@ export interface CarInfo {
 export interface TrackInfo {
   id: number;
   name: string;
+  /** Layout/variant (e.g. "Roval Long - 2018", "Grand Prix") */
+  variant?: string;
+  /** @deprecated Prefer variant. Kept for backward compatibility. */
   configuration?: string;
+  platform?: string;
+  platform_id?: string;
 }
 
 export interface SectorTime {

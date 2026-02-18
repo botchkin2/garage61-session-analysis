@@ -8,6 +8,7 @@ module.exports = defineConfig([
     ignores: [
       'dist/',
       'build/',
+      'scripts/',
       'node_modules/',
       '**/*.min.js',
       '**/*.min.css',

@@ -28,6 +28,17 @@ echo -n "your-client-id" | firebase functions:secrets:set GARAGE61_OAUTH_CLIENT_
 echo -n "your-client-secret" | firebase functions:secrets:set GARAGE61_OAUTH_CLIENT_SECRET
 ```
 
+#### Session token encryption (required)
+
+Session tokens are **always** stored encrypted in Firestore. You must set `SESSION_ENCRYPTION_KEY` or auth will fail with “Session encryption not configured”.
+
+```bash
+# Generate a random key (any length; hashed to 256-bit for AES-256-GCM)
+openssl rand -base64 32 | firebase functions:secrets:set SESSION_ENCRYPTION_KEY
+```
+
+- **Rotating the key:** Set a new value and redeploy. Existing sessions will fail to decrypt until users sign in again.
+
 **Note:** The proxy does **not** use a fallback shared token. Access requires OAuth (session cookie on web or Bearer token on mobile). You do **not** need to set `GARAGE61_API_TOKEN`.
 
 After changing secrets, **redeploy** the functions so they pick up the new values:

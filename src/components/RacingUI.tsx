@@ -1,13 +1,13 @@
+import {RacingTheme} from '@src/theme';
 import React from 'react';
 import {
-  View,
+  Platform,
+  StyleSheet,
   Text,
   TouchableOpacity,
-  StyleSheet,
+  View,
   ViewStyle,
-  Platform,
 } from 'react-native';
-import {RacingTheme} from '@src/theme';
 
 interface RacingCardProps {
   children: React.ReactNode;

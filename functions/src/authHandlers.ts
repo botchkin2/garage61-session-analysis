@@ -11,9 +11,42 @@ import {
   SESSION_COOKIE_NAME,
   SESSION_MAX_AGE_DAYS,
 } from './oauth';
+import {decryptToken, encryptToken} from './sessionEncryption';
 
 const COLLECTION_STATE = 'oauth_state';
 const COLLECTION_SESSIONS = 'oauth_sessions';
+
+/** Read access/refresh from session doc (encrypted only; no plaintext fallback). */
+function getSessionTokens(
+  data: Record<string, unknown>,
+  encryptionKey: string,
+): {accessToken: string; refreshToken: string | null} {
+  if (typeof data.accessTokenEnc !== 'string') {
+    return {accessToken: '', refreshToken: null};
+  }
+  const accessToken = decryptToken(data.accessTokenEnc, encryptionKey);
+  const refreshToken =
+    typeof data.refreshTokenEnc === 'string'
+      ? decryptToken(data.refreshTokenEnc, encryptionKey)
+      : null;
+  return {accessToken, refreshToken};
+}
+
+/** Build session token fields for write. Encryption is required; tokens are always stored encrypted. */
+function buildSessionTokenFields(
+  accessToken: string,
+  refreshToken: string | null,
+  encryptionKey: string,
+): Record<string, string | null | admin.firestore.FieldValue> {
+  return {
+    accessTokenEnc: encryptToken(accessToken, encryptionKey),
+    refreshTokenEnc: refreshToken
+      ? encryptToken(refreshToken, encryptionKey)
+      : null,
+    accessToken: admin.firestore.FieldValue.delete(),
+    refreshToken: admin.firestore.FieldValue.delete(),
+  };
+}
 
 function getFirestore() {
   return admin.firestore();
@@ -70,6 +103,7 @@ export async function handleAuthCallback(
   clientId: string,
   clientSecret: string,
   cookies: Record<string, string>,
+  encryptionKey: string,
 ): Promise<{
   success?: boolean;
   redirect?: string;
@@ -169,12 +203,16 @@ export async function handleAuthCallback(
   }
 
   const sessionId = crypto.randomBytes(24).toString('hex');
+  const tokenFields = buildSessionTokenFields(
+    data.access_token,
+    data.refresh_token || null,
+    encryptionKey,
+  );
   await getFirestore()
     .collection(COLLECTION_SESSIONS)
     .doc(sessionId)
     .set({
-      accessToken: data.access_token,
-      refreshToken: data.refresh_token || null,
+      ...tokenFields,
       expiresAt,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
@@ -193,6 +231,7 @@ export async function handleAuthRefresh(
   clientId: string,
   clientSecret: string,
   cookies: Record<string, string>,
+  encryptionKey: string,
 ): Promise<{
   access_token: string;
   refresh_token?: string;
@@ -208,7 +247,9 @@ export async function handleAuthRefresh(
       .doc(sessionId)
       .get();
     if (sessionSnap.exists) {
-      refreshToken = sessionSnap.data()?.refreshToken ?? null;
+      const data = sessionSnap.data()!;
+      const tokens = getSessionTokens(data, encryptionKey);
+      refreshToken = tokens.refreshToken;
     }
   }
 
@@ -238,12 +279,16 @@ export async function handleAuthRefresh(
   const expiresAt = Date.now() + expiresIn * 1000;
 
   if (sessionId) {
+    const tokenFields = buildSessionTokenFields(
+      data.access_token,
+      data.refresh_token ?? null,
+      encryptionKey,
+    );
     await getFirestore()
       .collection(COLLECTION_SESSIONS)
       .doc(sessionId)
       .update({
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token ?? null,
+        ...tokenFields,
         expiresAt,
       });
     return null; // Web: no body needed, session updated
@@ -304,6 +349,7 @@ export async function resolveAccessToken(
   fallbackToken: string | null,
   clientId?: string,
   clientSecret?: string,
+  encryptionKey?: string,
 ): Promise<string | null> {
   if (authHeader?.startsWith('Bearer ')) {
     console.log('[auth] resolveAccessToken: using Bearer header');
@@ -333,21 +379,28 @@ export async function resolveAccessToken(
   }
 
   const session = sessionSnap.data()!;
-  let accessToken = session.accessToken as string;
-  const expiresAt = session.expiresAt as number;
+  if (!encryptionKey) {
+    console.warn(
+      '[auth] resolveAccessToken: SESSION_ENCRYPTION_KEY not set; cannot read session',
+    );
+    return fallbackToken;
+  }
+  const {accessToken: rawAccess, refreshToken: rawRefresh} = getSessionTokens(
+    session,
+    encryptionKey,
+  );
+  let accessToken = rawAccess;
+  const expiresAt = (session.expiresAt as number) ?? 0;
   const now = Date.now();
   const canRefresh =
-    clientId &&
-    clientSecret &&
-    session.refreshToken &&
-    expiresAt <= now + 60 * 1000;
+    clientId && clientSecret && rawRefresh && expiresAt <= now + 60 * 1000;
   if (canRefresh) {
     try {
       const tokenRes = await axios.post<TokenResponse>(
         GARAGE61_OAUTH_TOKEN_URL,
         new URLSearchParams({
           grant_type: 'refresh_token',
-          refresh_token: session.refreshToken,
+          refresh_token: rawRefresh,
           client_id: clientId,
           client_secret: clientSecret,
         }),
@@ -359,9 +412,13 @@ export async function resolveAccessToken(
       const data = tokenRes.data;
       if (data.access_token) {
         accessToken = data.access_token;
+        const tokenFields = buildSessionTokenFields(
+          data.access_token,
+          data.refresh_token ?? rawRefresh,
+          encryptionKey,
+        );
         await sessionRef.update({
-          accessToken: data.access_token,
-          refreshToken: data.refresh_token ?? session.refreshToken,
+          ...tokenFields,
           expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000,
         });
         console.log('[auth] resolveAccessToken: token refreshed from session');

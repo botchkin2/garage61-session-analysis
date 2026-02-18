@@ -291,12 +291,16 @@ const SessionAnalysis: React.FC<SessionAnalysisProps> = ({
             limit: 1000,
             drivers: 'me',
             event: sessionData.eventId,
+            tracks:
+              sessionData.track?.id != null
+                ? [sessionData.track.id]
+                : undefined,
             unclean: true,
             group: 'none',
             lapTypes: '1,2,3,4',
           }
         : undefined,
-    [sessionData?.eventId],
+    [sessionData?.eventId, sessionData?.track?.id],
   );
 
   // Use cached laps query - only when sessionData is available

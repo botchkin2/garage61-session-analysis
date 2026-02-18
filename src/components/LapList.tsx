@@ -1,16 +1,9 @@
-import {
-  LapTime,
-  RacingButton,
-  RacingCard,
-  RacingDivider,
-  StatusBadge,
-  TimeRangeSelector,
-} from './RacingUI';
-import {useLaps} from '@src/hooks/useApiQueries';
+import {useLaps, useTracks} from '@src/hooks/useApiQueries';
 import {RacingTheme} from '@src/theme';
 import {ApiError, Lap} from '@src/types';
-import React, {useCallback, useEffect, useMemo, useState} from 'react';
+import {trackMatchesSearch} from '@src/utils/trackNicknames';
 import {useRouter} from 'expo-router';
+import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -19,9 +12,18 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import {
+  LapTime,
+  RacingButton,
+  RacingCard,
+  RacingDivider,
+  StatusBadge,
+  TimeRangeSelector,
+} from './RacingUI';
 
 interface EventGroup {
   eventId: string;
@@ -63,8 +65,62 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
   const [eventGroups, setEventGroups] = useState<EventGroup[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedTimeRange, setSelectedTimeRange] = useState<number>(1); // Default to 1 day (24h)
+  const [selectedTrackIds, setSelectedTrackIds] = useState<number[]>([]);
+  const [trackSearch, setTrackSearch] = useState('');
   const [fadeAnim] = useState(new Animated.Value(1));
   const [dimensions, setDimensions] = useState(Dimensions.get('window'));
+
+  const {data: tracksResponse, isLoading: tracksLoading} = useTracks({
+    enabled: queryEnabled,
+  });
+  const tracks = tracksResponse?.items ?? [];
+
+  // Group tracks by name (same venue, multiple variants)
+  const tracksByName = useMemo(() => {
+    const map = new Map<string, Lap['track'][]>();
+    tracks.forEach(t => {
+      const list = map.get(t.name) ?? [];
+      list.push(t);
+      map.set(t.name, list);
+    });
+    return Array.from(map.entries())
+      .map(([name, items]) => ({name, tracks: items}))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [tracks]);
+
+  // Filter groups by search (nickname-aware)
+  const filteredGroups = useMemo(() => {
+    if (!trackSearch.trim()) return tracksByName;
+    return tracksByName.filter(group =>
+      group.tracks.some(t => trackMatchesSearch(t, trackSearch)),
+    );
+  }, [tracksByName, trackSearch]);
+
+  const toggleTrackGroup = useCallback((trackIds: number[]) => {
+    setSelectedTrackIds(prev => {
+      const current = new Set(prev);
+      const allSelected = trackIds.every(id => current.has(id));
+      if (allSelected) {
+        trackIds.forEach(id => current.delete(id));
+      } else {
+        trackIds.forEach(id => current.add(id));
+      }
+      return Array.from(current);
+    });
+  }, []);
+
+  const selectAllFilteredTracks = useCallback(() => {
+    if (filteredGroups.length === 0) return;
+    setSelectedTrackIds(prev => {
+      const next = new Set(prev);
+      filteredGroups.forEach(g => g.tracks.forEach(t => next.add(t.id)));
+      return Array.from(next);
+    });
+  }, [filteredGroups]);
+
+  const clearTracks = useCallback(() => {
+    setSelectedTrackIds([]);
+  }, []);
 
   // Group laps by event ID with racing metrics
   const groupLapsByEvent = useCallback((lapData: Lap[]): EventGroup[] => {
@@ -132,23 +188,27 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
   }, []);
 
   // Memoize query parameters to ensure stable reference for React Query deduplication
+  // Laps API requires tracks to be specified
   const lapsQueryParams = useMemo(
     () => ({
       limit: 200,
       age: selectedTimeRange,
       drivers: 'me',
       group: 'none',
+      tracks: selectedTrackIds.length > 0 ? selectedTrackIds : undefined,
     }),
-    [selectedTimeRange],
+    [selectedTimeRange, selectedTrackIds],
   );
 
-  // Use cached laps query - only enable after component mounts
+  const lapsQueryEnabled = queryEnabled && selectedTrackIds.length > 0;
+
+  // Use cached laps query - only enable after component mounts and at least one track selected
   const {
     data: lapsResponse,
     isLoading: queryLoading,
     error: queryError,
     refetch,
-  } = useLaps(lapsQueryParams, {enabled: queryEnabled});
+  } = useLaps(lapsQueryParams, {enabled: lapsQueryEnabled});
 
   // Enable query after component mounts
   React.useEffect(() => {
@@ -230,7 +290,10 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
     return `Last ${days} Days`;
   };
 
-  if (loading) {
+  const showLapsLoading =
+    loading && selectedTrackIds.length > 0 && !lapsResponse;
+
+  if (showLapsLoading) {
     return (
       <View style={styles.mainContainer}>
         <View style={styles.fullHeightContainer}>
@@ -336,6 +399,102 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
               </View>
             )}
 
+            {/* Searchable track selector - laps API requires track filter */}
+            <View style={styles.trackSelectorSection}>
+              <Text style={styles.sectionTitle}>TRACKS</Text>
+              <Text style={styles.trackSelectorHint}>
+                Select at least one track to load sessions
+              </Text>
+              <TextInput
+                style={styles.trackSearchInput}
+                placeholder='Search tracks...'
+                placeholderTextColor={RacingTheme.colors.textTertiary}
+                value={trackSearch}
+                onChangeText={setTrackSearch}
+              />
+              {tracksLoading ? (
+                <View style={styles.trackListLoading}>
+                  <ActivityIndicator
+                    size='small'
+                    color={RacingTheme.colors.primary}
+                  />
+                  <Text style={styles.trackListLoadingText}>
+                    Loading tracks...
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  <View style={styles.trackSelectorActions}>
+                    <TouchableOpacity
+                      onPress={selectAllFilteredTracks}
+                      style={styles.trackSelectorActionBtn}>
+                      <Text style={styles.trackSelectorActionText}>
+                        Select all ({filteredGroups.length} venues)
+                      </Text>
+                    </TouchableOpacity>
+                    {selectedTrackIds.length > 0 && (
+                      <TouchableOpacity
+                        onPress={clearTracks}
+                        style={styles.trackSelectorActionBtn}>
+                        <Text style={styles.trackSelectorActionText}>
+                          Clear
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  <ScrollView
+                    style={styles.trackListScroll}
+                    nestedScrollEnabled
+                    keyboardShouldPersistTaps='handled'>
+                    {filteredGroups.map(group => {
+                      const ids = group.tracks.map(t => t.id);
+                      const allSelected = ids.every(id =>
+                        selectedTrackIds.includes(id),
+                      );
+                      const someSelected = ids.some(id =>
+                        selectedTrackIds.includes(id),
+                      );
+                      const variantLabel =
+                        group.tracks.length > 1
+                          ? ` (${group.tracks.length} variants)`
+                          : '';
+                      return (
+                        <TouchableOpacity
+                          key={group.name}
+                          style={[
+                            styles.trackRow,
+                            (allSelected || someSelected) &&
+                              styles.trackRowSelected,
+                          ]}
+                          onPress={() => toggleTrackGroup(ids)}
+                          activeOpacity={0.7}>
+                          <Text style={styles.trackRowCheck}>
+                            {allSelected ? '✓' : someSelected ? '◐' : '○'}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.trackRowName,
+                              (allSelected || someSelected) &&
+                                styles.trackRowNameSelected,
+                            ]}
+                            numberOfLines={2}>
+                            {group.name}
+                            {variantLabel}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                  {selectedTrackIds.length > 0 && (
+                    <Text style={styles.trackSelectedCount}>
+                      {selectedTrackIds.length} track variant
+                      {selectedTrackIds.length !== 1 ? 's' : ''} selected
+                    </Text>
+                  )}
+                </>
+              )}
+            </View>
+
             {/* Time Range Selector + Refresh (same row on web) */}
             {Platform.OS === 'web' ? (
               <View style={styles.topControlsRow}>
@@ -371,7 +530,13 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
             <View style={styles.eventsSection}>
               <Text style={styles.sectionTitle}>SESSION ANALYSIS</Text>
 
-              {Platform.OS === 'web' ? (
+              {selectedTrackIds.length === 0 ? (
+                <RacingCard style={styles.trackPromptCard}>
+                  <Text style={styles.trackPromptText}>
+                    Select at least one track above to load sessions.
+                  </Text>
+                </RacingCard>
+              ) : Platform.OS === 'web' ? (
                 // Web: Use View with map() for consistent behavior
                 <View style={styles.eventsList}>
                   {eventGroups.map(event => (
@@ -891,17 +1056,19 @@ const LapList: React.FC<LapListProps> = ({onSessionAnalysis}) => {
                 </View>
               )}
 
-              {eventGroups.length === 0 && !loading && (
-                <RacingCard style={styles.emptyCard}>
-                  <Text style={styles.emptyIcon}>🏁</Text>
-                  <Text style={styles.emptyTitle}>NO RACING DATA</Text>
-                  <Text style={styles.emptyMessage}>
-                    No laps recorded in the{' '}
-                    {formatTimeRange(selectedTimeRange).toLowerCase()}.{'\n'}
-                    Hit the track and start analyzing your performance!
-                  </Text>
-                </RacingCard>
-              )}
+              {selectedTrackIds.length > 0 &&
+                eventGroups.length === 0 &&
+                !loading && (
+                  <RacingCard style={styles.emptyCard}>
+                    <Text style={styles.emptyIcon}>🏁</Text>
+                    <Text style={styles.emptyTitle}>NO RACING DATA</Text>
+                    <Text style={styles.emptyMessage}>
+                      No laps recorded in the{' '}
+                      {formatTimeRange(selectedTimeRange).toLowerCase()}.{'\n'}
+                      Hit the track and start analyzing your performance!
+                    </Text>
+                  </RacingCard>
+                )}
             </View>
 
             <View style={styles.bottomSpacing} />
@@ -990,6 +1157,95 @@ const styles = StyleSheet.create({
   refreshButton: {
     marginBottom: RacingTheme.spacing.lg,
     alignSelf: 'center',
+  },
+  trackSelectorSection: {
+    marginBottom: RacingTheme.spacing.lg,
+    padding: RacingTheme.spacing.md,
+    backgroundColor: RacingTheme.colors.surface,
+    borderRadius: RacingTheme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: RacingTheme.colors.surfaceElevated,
+  },
+  trackSelectorHint: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.textSecondary,
+    marginBottom: RacingTheme.spacing.sm,
+  },
+  trackSearchInput: {
+    backgroundColor: RacingTheme.colors.background,
+    borderRadius: RacingTheme.borderRadius.sm,
+    borderWidth: 1,
+    borderColor: RacingTheme.colors.surfaceElevated,
+    paddingHorizontal: RacingTheme.spacing.md,
+    paddingVertical: RacingTheme.spacing.sm,
+    fontSize: RacingTheme.typography.body,
+    color: RacingTheme.colors.text,
+    marginBottom: RacingTheme.spacing.sm,
+  },
+  trackListLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: RacingTheme.spacing.sm,
+    paddingVertical: RacingTheme.spacing.md,
+  },
+  trackListLoadingText: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.textSecondary,
+  },
+  trackSelectorActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: RacingTheme.spacing.sm,
+    marginBottom: RacingTheme.spacing.xs,
+  },
+  trackSelectorActionBtn: {
+    paddingVertical: RacingTheme.spacing.xs,
+    paddingHorizontal: RacingTheme.spacing.sm,
+  },
+  trackSelectorActionText: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.primary,
+  },
+  trackListScroll: {
+    maxHeight: 220,
+    marginBottom: RacingTheme.spacing.xs,
+  },
+  trackRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: RacingTheme.spacing.sm,
+    paddingHorizontal: RacingTheme.spacing.sm,
+    borderRadius: RacingTheme.borderRadius.sm,
+    gap: RacingTheme.spacing.sm,
+  },
+  trackRowSelected: {
+    backgroundColor: RacingTheme.colors.surfaceElevated,
+  },
+  trackRowCheck: {
+    fontSize: RacingTheme.typography.body,
+    color: RacingTheme.colors.primary,
+    width: 24,
+  },
+  trackRowName: {
+    flex: 1,
+    fontSize: RacingTheme.typography.body,
+    color: RacingTheme.colors.textSecondary,
+  },
+  trackRowNameSelected: {
+    color: RacingTheme.colors.text,
+  },
+  trackSelectedCount: {
+    fontSize: RacingTheme.typography.caption,
+    color: RacingTheme.colors.textTertiary,
+  },
+  trackPromptCard: {
+    padding: RacingTheme.spacing.lg,
+    marginBottom: RacingTheme.spacing.md,
+  },
+  trackPromptText: {
+    fontSize: RacingTheme.typography.body,
+    color: RacingTheme.colors.textSecondary,
+    textAlign: 'center',
   },
   eventsSection: {
     marginBottom: RacingTheme.spacing.lg,

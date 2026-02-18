@@ -18,8 +18,8 @@ if (!admin.apps.length) {
 
 const garage61OauthClientId = defineSecret('GARAGE61_OAUTH_CLIENT_ID');
 const garage61OauthClientSecret = defineSecret('GARAGE61_OAUTH_CLIENT_SECRET');
+const sessionEncryptionKey = defineSecret('SESSION_ENCRYPTION_KEY');
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ReqLike = any;
 
 interface Response {
@@ -61,7 +61,11 @@ async function getJsonBody(req: ReqLike): Promise<Record<string, any>> {
 
 export const garage61Proxy = onRequest(
   {
-    secrets: [garage61OauthClientId, garage61OauthClientSecret],
+    secrets: [
+      garage61OauthClientId,
+      garage61OauthClientSecret,
+      sessionEncryptionKey,
+    ],
   },
   async (req: ReqLike, res: Response) => {
     // With credentials (cookies), browser requires a specific origin; * is invalid
@@ -125,7 +129,7 @@ export const garage61Proxy = onRequest(
         try {
           const status = await getAuthStatus(req.headers.cookie);
           res.status(200).json(status);
-        } catch (e) {
+        } catch {
           res.status(200).json({hasSession: false});
         }
         return;
@@ -158,6 +162,29 @@ export const garage61Proxy = onRequest(
         return;
       }
 
+      let encKey: string;
+      try {
+        encKey = sessionEncryptionKey.value() ?? '';
+      } catch (secretErr: any) {
+        console.error(
+          'Auth route: SESSION_ENCRYPTION_KEY unavailable',
+          secretErr?.message || secretErr,
+        );
+        res.status(500).json({
+          error: 'Session encryption not configured',
+          message:
+            'SESSION_ENCRYPTION_KEY must be set. Run: firebase functions:secrets:set SESSION_ENCRYPTION_KEY',
+        });
+        return;
+      }
+      if (!encKey || encKey.length === 0) {
+        res.status(500).json({
+          error: 'Session encryption not configured',
+          message: 'SESSION_ENCRYPTION_KEY must be non-empty',
+        });
+        return;
+      }
+
       try {
         const cookies = parseCookies(req.headers.cookie);
 
@@ -178,6 +205,7 @@ export const garage61Proxy = onRequest(
             clientId,
             clientSecret,
             cookies,
+            encKey,
           );
           if (result.setCookie) {
             res.set('Set-Cookie', result.setCookie);
@@ -203,6 +231,7 @@ export const garage61Proxy = onRequest(
             clientId,
             clientSecret,
             cookies,
+            encKey,
           );
           if (result === null) {
             res.status(204).end();
@@ -258,12 +287,15 @@ export const garage61Proxy = onRequest(
 
     let clientId: string | undefined;
     let clientSecret: string | undefined;
+    let encKey: string | undefined;
     try {
       clientId = garage61OauthClientId.value() || undefined;
       clientSecret = garage61OauthClientSecret.value() || undefined;
+      encKey = sessionEncryptionKey.value() ?? undefined;
     } catch {
       clientId = undefined;
       clientSecret = undefined;
+      encKey = undefined;
     }
     const token = await resolveAccessToken(
       (req.headers.authorization ?? req.headers.Authorization) as
@@ -273,6 +305,7 @@ export const garage61Proxy = onRequest(
       null, // no fallback: require OAuth (session cookie or Bearer)
       clientId,
       clientSecret,
+      encKey,
     );
 
     if (!token) {

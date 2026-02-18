@@ -1,6 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {API_CONFIG} from '@src/config/api';
-import {ApiError, Garage61User, LapsResponse} from '@src/types';
+import {
+  ApiError,
+  Garage61User,
+  LapsResponse,
+  TrackInfo,
+  TracksResponse,
+} from '@src/types';
 import axios, {AxiosError, AxiosInstance, AxiosResponse} from 'axios';
 import * as FileSystem from 'expo-file-system';
 import {Platform} from 'react-native';
@@ -394,6 +400,18 @@ class ApiClient {
   // Get current user information
   async getCurrentUser(): Promise<Garage61User> {
     return this.deduplicatedRequest<Garage61User>('GET', '/me');
+  }
+
+  // Get tracks (required for laps API: laps must be requested per track)
+  async getTracks(): Promise<TracksResponse> {
+    const raw = await this.deduplicatedRequest<TracksResponse | TrackInfo[]>(
+      'GET',
+      '/tracks',
+    );
+    if (Array.isArray(raw)) {
+      return {items: raw};
+    }
+    return raw;
   }
 
   // Get laps with filtering
