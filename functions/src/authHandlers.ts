@@ -32,20 +32,27 @@ function getSessionTokens(
   return {accessToken, refreshToken};
 }
 
-/** Build session token fields for write. Encryption is required; tokens are always stored encrypted. */
+/**
+ * Build session token fields for write. Encryption is required.
+ * For initial .set() do not use delete(); for .update() use delete() to remove any plaintext fields.
+ */
 function buildSessionTokenFields(
   accessToken: string,
   refreshToken: string | null,
   encryptionKey: string,
+  options?: {forUpdate?: boolean},
 ): Record<string, string | null | admin.firestore.FieldValue> {
-  return {
+  const fields: Record<string, string | null | admin.firestore.FieldValue> = {
     accessTokenEnc: encryptToken(accessToken, encryptionKey),
     refreshTokenEnc: refreshToken
       ? encryptToken(refreshToken, encryptionKey)
       : null,
-    accessToken: admin.firestore.FieldValue.delete(),
-    refreshToken: admin.firestore.FieldValue.delete(),
   };
+  if (options?.forUpdate) {
+    fields.accessToken = admin.firestore.FieldValue.delete();
+    fields.refreshToken = admin.firestore.FieldValue.delete();
+  }
+  return fields;
 }
 
 function getFirestore() {
@@ -283,6 +290,7 @@ export async function handleAuthRefresh(
       data.access_token,
       data.refresh_token ?? null,
       encryptionKey,
+      {forUpdate: true},
     );
     await getFirestore()
       .collection(COLLECTION_SESSIONS)
@@ -416,6 +424,7 @@ export async function resolveAccessToken(
           data.access_token,
           data.refresh_token ?? rawRefresh,
           encryptionKey,
+          {forUpdate: true},
         );
         await sessionRef.update({
           ...tokenFields,
