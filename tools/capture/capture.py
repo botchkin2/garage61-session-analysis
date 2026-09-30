@@ -50,20 +50,19 @@ def write_json(path, value):
 
 
 def _write_table(path, cols):
-    """Byte-stream-split for numbers: the game's floats are noisy in the low
-    bytes, and splitting by byte lets zstd squeeze the steady high bytes
-    (-35% on a race chunk, lossless; pit-wall thread 30, #763). Text keeps
-    its dictionary, everything else the writer default."""
+    """Byte-stream-split for floating columns: the game's floats are noisy in
+    the low bytes, and splitting by byte lets zstd squeeze the steady high
+    bytes (-35% on a race chunk, lossless; pit-wall thread 30, #763). Floats
+    only: DuckDB 1.4 (our reader, tools/sessions/duck.mjs) refuses a
+    byte-stream-split integer column, so a chunk with one could be written but
+    never read (thread 30, #1028). Text keeps its dictionary, everything else
+    the writer default."""
     table = pa.table(cols)
-    numeric = [
-        f.name
-        for f in table.schema
-        if pa.types.is_floating(f.type) or f.type in (pa.int32(), pa.int64())
-    ]
+    floating = [f.name for f in table.schema if pa.types.is_floating(f.type)]
     text = [f.name for f in table.schema if pa.types.is_string(f.type)]
     tmp = Path(f"{path}.tmp")
     pq.write_table(
-        table, tmp, compression="zstd", use_byte_stream_split=numeric, use_dictionary=text or False
+        table, tmp, compression="zstd", use_byte_stream_split=floating, use_dictionary=text or False
     )
     os.replace(tmp, path)
 
