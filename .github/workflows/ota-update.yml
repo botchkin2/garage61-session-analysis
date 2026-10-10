@@ -19,15 +19,24 @@ name: OTA update
 on:
   push:
     branches: [main]
-    paths:
-      - 'app/**'
-      - 'src/**'
-      - 'assets/**'
-      - 'app.json'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'babel.config.js'
-      - 'metro.config.js'
+    # Everything that can reach the bundle or the fingerprint runs it (src/,
+    # app/, assets/, tools/track-info via catalog.ts, tsconfig.json, eas.json,
+    # package files, configs); only what never does is ignored.
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - 'desktop/**'
+      - 'functions/**'
+      - 'ops/**'
+      - 'scripts/**'
+      - 'tools/**'
+      - '!tools/track-info/**'
+      - '.claude/**'
+      - '.github/**'
+      - '!.github/workflows/ota-update.yml'
+      - 'firebase*.json'
+      - 'firestore.*'
+      - '.firebaserc'
 
 permissions:
   contents: read
@@ -40,6 +49,8 @@ jobs:
   update:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Also a deployment-branch rule on the Environment (docs/ANDROID_BUILD.md).
+    if: github.ref == 'refs/heads/main'
     environment: ota-update
     steps:
       - uses: actions/checkout@v7
@@ -65,5 +76,7 @@ jobs:
           --message "${GITHUB_SHA::8}" --non-interactive --json
           > "$RUNNER_TEMP/update.json"
 
+      # After the publish: a summary problem must not fail a published update.
       - name: Summary (group, runtime version, message)
+        continue-on-error: true
         run: node scripts/ota-summary.mjs "$RUNNER_TEMP/update.json" "${GITHUB_SHA::8}" >> "$GITHUB_STEP_SUMMARY"
