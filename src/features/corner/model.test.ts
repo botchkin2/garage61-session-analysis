@@ -1,5 +1,7 @@
 import {describe, expect, it} from '@jest/globals';
 
+import {resampleTrace} from '@/src/analysis/resample';
+
 // Adapters are internal to data/; tests reach them to build real shapes.
 import {
   toLaps,
@@ -84,6 +86,31 @@ const lap = (
     },
   ],
 });
+// A lap at a constant speed on the grid, for the median and the window.
+function cornerTrace(kph: number) {
+  const v = kph / 3.6;
+  const n = Math.ceil(1000 / v / 0.1) + 1;
+  const pct = Array.from({length: n}, (_, i) =>
+    Math.min(1, (i * 0.1 * v) / 1000),
+  );
+  const same = (x: number) => pct.map(() => x);
+  return resampleTrace(
+    {
+      lapDistPct: pct,
+      speedKph: same(kph),
+      throttlePct: same(100),
+      brakePct: same(0),
+      steeringPct: same(0),
+      gear: same(4),
+      lat: pct,
+      lon: same(0),
+    },
+    1000,
+    5,
+    10,
+  );
+}
+
 const laps = toLaps([
   lap('a', [9.8, 460, 110, 650]),
   lap('b', [10.1, 450, 106, 670]),
@@ -327,24 +354,45 @@ describe('the median basis (no Ref picked)', () => {
   });
 
   it('a highlighted lap outside the set is shown, and moves no median', () => {
-    const m = buildCornerModel({
+    // Traces loaded for all four: x is far faster, so it would move a median.
+    const traces = new Map(
+      [
+        ['a', 180],
+        ['b', 182],
+        ['c', 184],
+        ['x', 300],
+      ].map(([id, kph]) => [id as string, cornerTrace(kph as number)]),
+    );
+    const withX = buildCornerModel({
       session,
       laps,
       map,
       band: null,
-      traces: new Map(),
+      traces,
       lapIds: ['a', 'b', 'c'],
       refId: null,
       keyLapIds: ['a', 'b', 'c', 'x'],
       hl: 'x',
       corner: 3,
     })!;
-    expect(m.subtitle).toContain('3 laps · vs median of 3');
-    expect(m.rows.map(r => r.lapId)).toContain('x');
-    const basisOnly = median(['a', 'b', 'c'], null);
-    const gap = (mm: typeof m, id: string) =>
+    const withoutX = buildCornerModel({
+      session,
+      laps,
+      map,
+      band: null,
+      traces,
+      lapIds: ['a', 'b', 'c'],
+      refId: null,
+      keyLapIds: ['a', 'b', 'c'],
+      hl: null,
+      corner: 3,
+    })!;
+    expect(withX.subtitle).toContain('3 laps · vs median of 3');
+    expect(withX.rows.map(r => r.lapId)).toContain('x');
+    // The median of the set, and the window over the set, are the same with or without the highlight.
+    const gap = (mm: typeof withX, id: string) =>
       mm.rows.find(r => r.lapId === id)!.cells.time.gap;
-    expect(gap(m, 'a')).toBe(gap(basisOnly, 'a'));
+    expect(gap(withX, 'a')).toBe(gap(withoutX, 'a'));
   });
 
   it('a picked Ref is the basis, and it has no difference against itself', () => {

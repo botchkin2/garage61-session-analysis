@@ -359,7 +359,7 @@ export function buildCornerModel(input: {
       : set[1]?.id ?? null;
 
   // One entry part for the whole set, so a column never mixes apexes.
-  const entryN = whole ? entryPartOf(selected, all, sec) : null;
+  const entryN = whole ? entryPartOf(set, all, sec) : null;
   const sourcesOf = (l: Lap) =>
     cornerSources(l, all, sec, whole, sectionApexM, entryN);
   const valuesOf = (l: Lap): Record<Measure, number | null> => {
@@ -567,7 +567,7 @@ export function buildCornerModel(input: {
   const mapView = cornerView(all, idx, mapWindow, map.lengthM);
 
   // The median basis trace is the one Compare builds (medianBasisOf).
-  const refTrace = ref ? traces.get(ref.id) : medianBasisOf(selected, traces);
+  const refTrace = ref ? traces.get(ref.id) : medianBasisOf(set, traces);
   const lines: ZoomLine[] = rows.flatMap(r => {
     const t = traces.get(r.lapId);
     if (!t) return [];
@@ -625,7 +625,7 @@ export function buildCornerModel(input: {
     window: buildSectionWindow({
       map,
       sectionN: sec.sectionN,
-      laps: selected,
+      laps: set,
       sessionLaps: laps,
       refId: input.refId ?? null,
     }),
