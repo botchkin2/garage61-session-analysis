@@ -13,10 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      # A read-only identity for the private bucket that holds the golden set's
-      # slices (tools/golden/README.md). Absent on a fork's pull request: the
-      # golden sessions are then skipped there, never failed.
-      GOLDEN_KEY: ${{ secrets.GOLDEN_READER_SERVICE_ACCOUNT }}
+      # Whether the read-only identity for the golden set's private bucket
+      # exists (tools/golden/README.md); absent on a fork's pull request, where
+      # the golden sessions are skipped, never failed. Only the boolean is in
+      # the job's environment: the key itself goes to the auth step alone.
+      HAS_GOLDEN: ${{ secrets.GOLDEN_READER_SERVICE_ACCOUNT != '' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -43,15 +44,17 @@ jobs:
       - name: DuckDB CLI (path)
         run: echo "DUCKDB=$RUNNER_TEMP/duckdb/duckdb" >> "$GITHUB_ENV"
       - name: Golden set (credential)
-        if: env.GOLDEN_KEY != ''
+        if: env.HAS_GOLDEN == 'true'
         uses: google-github-actions/auth@v3
         with:
           credentials_json: ${{ secrets.GOLDEN_READER_SERVICE_ACCOUNT }}
       - name: Golden set (gcloud)
-        if: env.GOLDEN_KEY != ''
+        if: env.HAS_GOLDEN == 'true'
         uses: google-github-actions/setup-gcloud@v3
-      - name: Golden set (fetch the slices)
-        if: env.GOLDEN_KEY != ''
+      # The slices are fetched inside the tests; with the credential a slice
+      # that cannot be fetched fails the run instead of skipping.
+      - name: Golden set (require the slices)
+        if: env.HAS_GOLDEN == 'true'
         run: echo "GOLDEN_REQUIRED=1" >> "$GITHUB_ENV"
       - name: Types
         run: npx tsc --noEmit

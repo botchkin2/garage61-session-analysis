@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 
 import {diffSummary} from './golden.mjs';
-import {sessionOf, unexplained} from './gate.mjs';
+import {changedSlices, sessionOf, unexplained} from './gate.mjs';
 
 const EXPECTED = 'tools/golden/expected/lmu-race-road-atlanta.json';
 
@@ -56,4 +56,21 @@ test('the diff names the path and both values, and caps itself', () => {
   const many = diffSummary({}, Object.fromEntries(Array.from({length: 50}, (_, i) => [`k${i}`, i])), 5);
   assert.equal(many.length, 6);
   assert.match(many.at(-1), /45 more/);
+});
+
+test('a swapped slice is a change: the manifest’s sha256 for a session differs', () => {
+  const base = {fixtures: {a: {'0.samples.parquet': {sha256: 'x'}}, b: {'0.samples.parquet': {sha256: 'y'}}}};
+  const same = JSON.parse(JSON.stringify(base));
+  assert.deepEqual(changedSlices(base, same), []);
+  const swapped = JSON.parse(JSON.stringify(base));
+  swapped.fixtures.b['0.samples.parquet'].sha256 = 'z';
+  swapped.fixtures.c = {'0.samples.parquet': {sha256: 'n'}};
+  assert.deepEqual(changedSlices(base, swapped), ['b', 'c']);
+  assert.deepEqual(changedSlices(null, base), ['a', 'b']);
+  // With unchanged expected files, the swapped slice still needs its entry.
+  assert.deepEqual(unexplained([], [], ['b']), ['b']);
+  assert.deepEqual(
+    unexplained([], ['## 2026-10-11 b', 'Why: the slice was cut again with a longer lap range'], ['b']),
+    [],
+  );
 });
