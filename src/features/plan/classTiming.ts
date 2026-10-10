@@ -111,7 +111,9 @@ export type ClassRow = {
   everyText: string;
   /** "3 races · 280 laps · grid gap 10–20 s" */
   srcText: string;
-  /** Passes inside the race, for the timeline; empty unless it reaches him. */
+  /** Faster than his median: it gets a lane on the timeline. */
+  reaches: boolean;
+  /** Passes inside the race; empty unless it reaches him. */
   passes: Pass[];
 };
 
@@ -295,6 +297,7 @@ export function classTiming(input: ClassTimingInput): ClassTiming {
         gainText: NONE,
         firstText: NONE,
         everyText: NONE,
+        reaches: false,
         passes: [],
       };
     const gainS = myLap - p.medianS;
@@ -311,6 +314,7 @@ export function classTiming(input: ClassTimingInput): ClassTiming {
       everyText: reaches
         ? `~${Math.round(catchLaps(p.medianS, myLap))} laps`
         : NONE,
+      reaches,
       passes:
         reaches && raceLaps != null ? passesOf(p, myLap, raceLaps, gap) : [],
     };
