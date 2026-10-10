@@ -353,6 +353,41 @@ describe('the median basis (no Ref picked)', () => {
     }
   });
 
+  it('a highlighted lap whose brake part differs does not move the compound entry part', () => {
+    // A compound section (T2–5): the set's lap brakes in part 4, the highlighted
+    // lap in part 3. Counting the highlight in the vote would flip the entry part.
+    const base = lap('e', [9.9, 455, 109, 655]);
+    const withPart = (part: number) => ({
+      ...base,
+      corners: [
+        base.corners[0],
+        {
+          ...base.corners[1],
+          brakeApps: [{onsetM: 620, peakPct: 95, part}],
+        },
+      ],
+    });
+    const mk = (hl: string | null) =>
+      buildCornerModel({
+        session,
+        laps: toLaps([withPart(4), {...withPart(3), id: 'd'}]),
+        map,
+        band: null,
+        traces: new Map(),
+        lapIds: ['e'],
+        refId: null,
+        keyLapIds: hl ? ['e', hl] : ['e'],
+        hl,
+        corner: 2,
+        whole: true,
+      })!;
+    const withD = mk('d');
+    const without = mk(null);
+    const valuesOf = (m: typeof withD) =>
+      m.rows.find(r => r.lapId === 'e')!.values;
+    expect(valuesOf(withD)).toEqual(valuesOf(without));
+  });
+
   it('a highlighted lap outside the set is shown, and moves no median', () => {
     // Traces loaded for all four: x is far faster, so it would move a median.
     const traces = new Map(

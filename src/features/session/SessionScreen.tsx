@@ -456,6 +456,7 @@ function SessionView({
         width={width}
         wide={wide}
         sectionTaps={sectionTaps}
+        sectionNames={model.sections?.heads}
         onSectionPress={i => {
           const target =
             model.sections &&
