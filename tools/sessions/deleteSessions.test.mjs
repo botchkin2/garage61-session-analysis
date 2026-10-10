@@ -123,7 +123,7 @@ test('a session of another owner is refused', async () => {
 test('a missing document with leftovers is refused; with nothing left it is a no-op', async () => {
   const leftovers = fakeStore({...lap('lap-1', OLD)}, {[`bands/${OWNER}/${OLD}/v1.json.gz`]: 1});
   const refused = await planDelete(leftovers, {owner: OWNER, ids: [OLD]});
-  assert.match(refused.refusals[0].why, /no session document, but 1 lap\(s\) and 2 object\(s\) remain/);
+  assert.match(refused.refusals[0].why, /no session document, but 1 lap\(s\) and 1 object\(s\) remain/);
   const gone = await planDelete(fakeStore(), {owner: OWNER, ids: [OLD]});
   assert.deepEqual(gone.refusals, []);
   assert.deepEqual(gone.sessions[0].files, []);
