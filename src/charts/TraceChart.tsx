@@ -54,6 +54,8 @@ export type TraceSeries = {
   fill?: number;
   /** Own y range; series without one share the chart's. */
   domain?: [number, number];
+  /** Y tick labels at this series' own range (a stacked chart's steering band). */
+  ticks?: {v: number; label: string}[];
   /** Discrete channel (gear): drawn as steps, never smoothed. */
   stepped?: boolean;
   /** Recorded samples: drawn instead of `values` when given. */
@@ -181,6 +183,15 @@ export function TraceChart({
     tRef
       ? distanceAtTime(tRef, t0 + (px / width) * spanS)
       : startM + (px / width) * spanM;
+  // A label at the top of its range sits below the line there (a 100 % throttle
+  // runs on it), one at the bottom sits above its edge, so the clip keeps it.
+  const tickBaseline = (d: [number, number], v: number) => {
+    const at = yFor(d)(v);
+    if (v >= d[1]) return at + 14;
+    if (v <= d[0]) return at - 4;
+    return at + 3;
+  };
+  const firstTickSeries = series.findIndex(s => s.ticks != null);
   const yFor =
     ([lo, hi]: [number, number]) =>
     (v: number) =>
@@ -466,6 +477,19 @@ export function TraceChart({
             {t.label}
           </SvgText>
         ))}
+        {/* One series' ticks: every lap's steering series carries the same frame. */}
+        {firstTickSeries >= 0 &&
+          series[firstTickSeries].ticks?.map(t => (
+            <SvgText
+              key={`s${t.v}`}
+              x={3}
+              y={tickBaseline(seriesDomainsT[firstTickSeries] ?? domainT, t.v)}
+              fill={color.textFaint}
+              fontFamily={axis.fontFamily}
+              fontSize={9}>
+              {t.label}
+            </SvgText>
+          ))}
         {zeroLine && sideLabels && (
           <>
             <SvgText
