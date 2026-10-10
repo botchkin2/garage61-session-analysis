@@ -183,14 +183,15 @@ export function TraceChart({
     tRef
       ? distanceAtTime(tRef, t0 + (px / width) * spanS)
       : startM + (px / width) * spanM;
-  // A label at the top of its range sits under the rule, one at the bottom sits
-  // above it: never on the edge, where the chart's clip would cut it off.
+  // A label at the top of its range sits below the line there (a 100 % throttle
+  // runs on it), one at the bottom sits above its edge, so the clip keeps it.
   const tickBaseline = (d: [number, number], v: number) => {
     const at = yFor(d)(v);
-    if (v >= d[1]) return at + 10;
+    if (v >= d[1]) return at + 14;
     if (v <= d[0]) return at - 4;
     return at + 3;
   };
+  const firstTickSeries = series.findIndex(s => s.ticks != null);
   const yFor =
     ([lo, hi]: [number, number]) =>
     (v: number) =>
@@ -476,19 +477,19 @@ export function TraceChart({
             {t.label}
           </SvgText>
         ))}
-        {series.map((s, si) =>
-          s.ticks?.map(t => (
+        {/* One series' ticks: every lap's steering series carries the same frame. */}
+        {firstTickSeries >= 0 &&
+          series[firstTickSeries].ticks?.map(t => (
             <SvgText
-              key={`s${si}y${t.v}`}
+              key={`s${t.v}`}
               x={3}
-              y={tickBaseline(seriesDomainsT[si] ?? domainT, t.v)}
+              y={tickBaseline(seriesDomainsT[firstTickSeries] ?? domainT, t.v)}
               fill={color.textFaint}
               fontFamily={axis.fontFamily}
               fontSize={9}>
               {t.label}
             </SvgText>
-          )),
-        )}
+          ))}
         {zeroLine && sideLabels && (
           <>
             <SvgText
