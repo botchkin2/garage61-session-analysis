@@ -135,10 +135,22 @@ export type DetailModel = {
   action: 'add' | 'remove';
 };
 
+/** One stint the tray can select in a tap (D16/D17): its comparable laps. */
+export type StintPick = {
+  n: number;
+  /** "2", under a Stint label (S1-S3 are the sector heads). */
+  label: string;
+  lapIds: string[];
+  /** The selection is exactly this stint's comparable laps. */
+  active: boolean;
+};
+
 export type TrayModel = {
   laps: {lapId: string; selIndex: number}[];
   label: string;
   count: number;
+  /** Two or more stints with comparable laps; empty otherwise (one stint is already the default set). */
+  stints: StintPick[];
 };
 
 /** The desktop Laps table's section columns: their heads, and the median, best and spread rows under it. */
@@ -508,16 +520,22 @@ export function buildSessionModel(
   const selected = selection.laps
     .map(id => laps.find(l => l.id === id))
     .filter((l): l is Lap => l != null);
-  const tray: TrayModel | null = selected.length
-    ? {
-        laps: selected.map((l, i) => ({lapId: l.id, selIndex: i})),
-        count: selected.length,
-        label:
-          selected.length <= 3
-            ? selected.map(lapLabel).join(' · ')
-            : `${selected.length} laps`,
-      }
-    : null;
+  const stints = stintPicks(rows, selection.laps);
+  // The tray stays while there are stints to pick, even with nothing selected.
+  const tray: TrayModel | null =
+    selected.length || stints.length
+      ? {
+          laps: selected.map((l, i) => ({lapId: l.id, selIndex: i})),
+          count: selected.length,
+          label:
+            selected.length === 0
+              ? ''
+              : selected.length <= 3
+              ? selected.map(lapLabel).join(' · ')
+              : `${selected.length} laps`,
+          stints,
+        }
+      : null;
 
   const bestLap = laps.find(l => l.id === session.bestLapId);
   const trafficPace = trafficPaceFacts(session);
@@ -662,4 +680,28 @@ export function gridCellTargetOf(
   if (!t || t.corner == null) return null;
   // The set is unchanged: the tapped lap is only highlighted.
   return {corner: t.corner, whole: t.whole, laps: checked};
+}
+
+/**
+ * The stints the tray offers (D16/D17: pick a stint, compare, untick an
+ * outlier, three taps): each stint header's comparable laps, when two or more
+ * stints have any. A stint is active when the selection is exactly its laps,
+ * in any order.
+ */
+export function stintPicks(rows: RowModel[], selected: string[]): StintPick[] {
+  const picks = rows.flatMap(r =>
+    r.kind === 'stint' && r.lapIds.length > 0 ? [r] : [],
+  );
+  if (picks.length < 2) return [];
+  const chosen = new Set(selected);
+  return picks.map(r => {
+    const n = Number(r.key.slice('stint-'.length));
+    return {
+      n,
+      label: String(n),
+      lapIds: r.lapIds,
+      active:
+        r.lapIds.length === chosen.size && r.lapIds.every(id => chosen.has(id)),
+    };
+  });
 }

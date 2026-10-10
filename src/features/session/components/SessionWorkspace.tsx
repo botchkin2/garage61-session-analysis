@@ -27,9 +27,9 @@ import {StintsPanel} from './StintsPanel';
 const PAD_X = space.xl + space.xs;
 
 /**
- * Desktop (≥1280) D1 Session workspace: centre (header, lap-time bars, wide
- * lap table) and a 340 pt right column (stints, stint vs stint,
- * lap detail, compare tray). The rail sits left of it in the route. Only
+ * Desktop (≥1280) D1 Session workspace: centre (header, lap-time bars, grid,
+ * wide lap table, and the compare tray pinned under them) and a 340 pt right
+ * column (stints, stint vs stint, lap detail). The rail sits left of it in the route. Only
  * rearranges the phone's components; the screen passes them in.
  */
 export function SessionWorkspace({
@@ -230,6 +230,17 @@ export function SessionWorkspace({
             </View>
           }
         />
+        {/* The tray sits under the list, outside it: beside the grid where
+            laps are ticked (D16), never scrolled away, never over the last row. */}
+        {tray && (
+          <View
+            style={[
+              styles.tray,
+              {backgroundColor: color.surface, borderColor: color.lineHeader},
+            ]}>
+            {tray}
+          </View>
+        )}
       </View>
       <PanelDivider
         width={side.width}
@@ -255,15 +266,6 @@ export function SessionWorkspace({
           />
           {detail}
         </ScrollView>
-        {tray && (
-          <View
-            style={[
-              styles.tray,
-              {backgroundColor: color.surface, borderColor: color.lineHeader},
-            ]}>
-            {tray}
-          </View>
-        )}
       </View>
     </View>
   );
