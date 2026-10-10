@@ -418,6 +418,9 @@ function SessionView({
       tray={model.tray}
       colorOf={i => colorOf(i)}
       onClear={() => onSelectionChange({laps: [], hl: selection.hl})}
+      onStint={lapIds =>
+        onSelectionChange({...selection, laps: replace(lapIds)})
+      }
       onCompare={() =>
         router.push(compareHref(sessionId, {laps: selection.laps}))
       }

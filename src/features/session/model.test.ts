@@ -98,9 +98,23 @@ describe('buildSessionModel', () => {
     expect(lapRow(m, 'L1').gap).toBeNull();
   });
 
-  it('no detail or tray without a selection', () => {
+  it('no detail without a selection; the tray keeps the two stints to pick', () => {
     expect(m.detail).toBeNull();
-    expect(m.tray).toBeNull();
+    expect(m.tray).toMatchObject({count: 0, label: '', laps: []});
+    expect(m.tray!.stints.map(s => [s.label, s.active])).toEqual([
+      ['1', false],
+      ['2', false],
+    ]);
+  });
+
+  it('one stint has nothing to pick: no tray without a selection', () => {
+    const one = {...session, stints: session.stints.slice(0, 1)};
+    const oneLaps = laps.map(l => ({...l, stint: 1}));
+    expect(buildSessionModel(one, oneLaps, none).tray).toBeNull();
+    expect(
+      buildSessionModel(one, oneLaps, {laps: [oneLaps[3].id], hl: null}).tray!
+        .stints,
+    ).toEqual([]);
   });
 });
 
@@ -128,6 +142,43 @@ describe('selection', () => {
     const sel = {laps: [ids[17], ids[18], ids[19], ids[20]], hl: null};
     const m = buildSessionModel(session, laps, sel);
     expect(m.tray!.label).toBe('4 laps');
+  });
+});
+
+describe('stint picks (D16/D17)', () => {
+  const stintRow = (m: ReturnType<typeof buildSessionModel>, n: number) =>
+    m.rows.find(r => r.kind === 'stint' && r.key === `stint-${n}`) as {
+      lapIds: string[];
+    };
+  const base = buildSessionModel(session, laps, none);
+
+  it("each pick is its stint header's comparable laps", () => {
+    for (const pick of base.tray!.stints)
+      expect(pick.lapIds).toEqual(stintRow(base, pick.n).lapIds);
+  });
+
+  it('a pick is marked while the selection is exactly its laps, in any order', () => {
+    const two = stintRow(base, 2).lapIds;
+    const m = buildSessionModel(session, laps, {
+      laps: [...two].reverse(),
+      hl: null,
+    });
+    expect(m.tray!.stints.map(s => s.active)).toEqual([false, true]);
+    expect(m.tray!.count).toBe(two.length);
+  });
+
+  it('unticking one lap of the stint clears the mark; adding one does too', () => {
+    const two = stintRow(base, 2).lapIds;
+    const less = buildSessionModel(session, laps, {
+      laps: two.slice(1),
+      hl: null,
+    });
+    expect(less.tray!.stints.some(s => s.active)).toBe(false);
+    const more = buildSessionModel(session, laps, {
+      laps: [...two, stintRow(base, 1).lapIds[0]],
+      hl: null,
+    });
+    expect(more.tray!.stints.some(s => s.active)).toBe(false);
   });
 });
 
