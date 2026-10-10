@@ -76,16 +76,20 @@ export function formatDistance(distanceM: number): string {
  * abbreviation. Device time zone.
  */
 export function dayMonthOf(d: Date): string {
-  return `${d.getDate()} ${d.toLocaleDateString('en-US', {month: 'short'})}`;
+  return `${d.getDate()} ${monthOf(d)}`;
+}
+
+// The one spelling of the short month: en-US, because en-GB gives "Sept".
+function monthOf(d: Date): string {
+  return d.toLocaleDateString('en-US', {month: 'short'});
 }
 
 /** "21 Sep 2026", in the device's time zone. */
 export function formatDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
-  return `${String(d.getDate()).padStart(2, '0')} ${d.toLocaleDateString(
-    'en-US',
-    {month: 'short'},
+  return `${String(d.getDate()).padStart(2, '0')} ${monthOf(
+    d,
   )} ${d.getFullYear()}`;
 }
 
