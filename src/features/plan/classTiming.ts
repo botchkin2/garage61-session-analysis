@@ -4,7 +4,7 @@ import {
   type StartGap,
 } from '@/src/analysis/classLaps';
 import {type SessionClassLaps} from '@/src/data/sessions';
-import {formatLapTime} from '@/src/design';
+import {formatGap, formatLapTime} from '@/src/design';
 
 import {lapName} from './planCards';
 
@@ -111,10 +111,10 @@ export type ClassRow = {
   label: string;
   /** His class. */
   mine: boolean;
-  /** "≈1:38.0": the pooled median lap, approximate (line crossings at 5 Hz). */
+  /** "1:38.0": the pooled median lap, to a tenth; approximate (line crossings at 5 Hz), the head says ≈. */
   lapText: string;
-  /** Seconds a lap the class is faster than his median, signed: "+12.0" faster, "−3.1" slower (the head says s). */
-  gainText: string;
+  /** The class median lap minus his median, s, the app's sign: "−12.0" faster, "+3.1" slower (the head says s). */
+  vsText: string;
   /** Where, in his laps, it first reaches him: "L8–L11". */
   firstText: string;
   /** His laps between one pass and the next: "~7 laps". */
@@ -167,7 +167,7 @@ const thousands = (n: number) => n.toLocaleString('en-GB');
 
 /** A field lap to a tenth: the crossings are interpolated at 5 Hz, so the thousandths are not real. */
 const approxLap = (s: number) =>
-  `≈${formatLapTime(Math.round(s * 10) / 10).slice(0, -2)}`;
+  formatLapTime(Math.round(s * 10) / 10).slice(0, -2);
 
 type Pooled = {
   medianS: number;
@@ -316,21 +316,22 @@ export function classTiming(input: ClassTimingInput): ClassTiming {
       lapText: approxLap(p.medianS),
       srcText: srcText(p),
     };
-    // Gain, first and every are against his median; his own class has none.
+    // vs you, first and every are against his median; his own class has none.
     if (own || myLap == null)
       return {
         ...base,
-        gainText: NONE,
+        vsText: NONE,
         firstText: NONE,
         everyText: NONE,
         reaches: false,
         passes: [],
       };
-    const gainS = myLap - p.medianS;
-    const reaches = gainS > 0;
+    // The class's lap against his, the app's sign: minus is faster.
+    const vsS = p.medianS - myLap;
+    const reaches = vsS < 0;
     return {
       ...base,
-      gainText: `${gainS >= 0 ? '+' : '−'}${Math.abs(gainS).toFixed(1)}`,
+      vsText: formatGap(vsS, 1),
       firstText: reaches
         ? rangeText(
             firstCatch(p.p10S, myLap, gap.firstS),

@@ -66,9 +66,12 @@ export const PACE_RANK: Record<PaceClass, number> = {
   other: 0,
 };
 
-/** A class string as the traffic code wants it: the key and the rank. */
-export function paceOf(carClass: string): {key: PaceClass; rank: number} {
-  const key = paceClass(carClass);
+/** A field car's class as the traffic code wants it: the key and the rank (by label on iRacing, carPaceClass). */
+export function paceOf(car: {class: string; classLabel?: string}): {
+  key: PaceClass;
+  rank: number;
+} {
+  const key = carPaceClass(car);
   return {key, rank: PACE_RANK[key]};
 }
 

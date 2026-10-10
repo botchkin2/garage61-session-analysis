@@ -15,14 +15,15 @@ import {type StopWindow} from '../planCards';
 import {PlanCard} from './PlanCard';
 import {RaceTimelineView} from './RaceTimelineView';
 
-// Units sit in the heads so a phone cell holds one line; the widths are
-// shares of the row, sized so every head and cell fits at 375 pt.
+// Units and the ≈ sit in the heads so a phone cell holds one line; the widths are
+// shares of the row, in proportion to each column's widest text at 375 pt
+// ("Hypercar", "1:37.2", "vs you, s", "L8–L12", "~10 laps"), measured live.
 const COLUMNS = [
-  {head: 'Class', flex: 1},
-  {head: 'Lap', flex: 1.1},
-  {head: 'Gain, s', flex: 0.9},
-  {head: 'First', flex: 1},
-  {head: 'Every', flex: 1.3},
+  {head: 'Class', flex: 1.12},
+  {head: 'Lap ≈', flex: 0.84},
+  {head: 'vs you, s', flex: 1.04},
+  {head: 'First', flex: 0.88},
+  {head: 'Every', flex: 1.14},
 ];
 const flexOf = (i: number) => ({flex: COLUMNS[i].flex});
 // The You line fills only the Lap column; this holds the rest of the row.
@@ -160,13 +161,11 @@ function ClassLine({row}: {row: ClassRow}) {
         <Text variant='bodyStrong' style={flexOf(0)}>
           {row.label}
         </Text>
-        {[row.lapText, row.gainText, row.firstText, row.everyText].map(
-          (v, i) => (
-            <Text key={i} variant='dataStrong' style={flexOf(i + 1)}>
-              {v}
-            </Text>
-          ),
-        )}
+        {[row.lapText, row.vsText, row.firstText, row.everyText].map((v, i) => (
+          <Text key={i} variant='dataStrong' style={flexOf(i + 1)}>
+            {v}
+          </Text>
+        ))}
       </View>
       <Text variant='dataSmall' tone='textMuted'>
         {row.srcText}
@@ -203,7 +202,7 @@ const styles = StyleSheet.create({
     paddingVertical: space.xxs,
   },
   head: {flexDirection: 'row', alignItems: 'center', gap: space.sm},
-  row: {flexDirection: 'row', alignItems: 'center', gap: space.sm},
+  row: {flexDirection: 'row', alignItems: 'center', gap: space.xs},
   box: {gap: space.xs, paddingVertical: space.md, borderTopWidth: 1},
   you: {gap: space.xs, paddingBottom: space.md},
 });

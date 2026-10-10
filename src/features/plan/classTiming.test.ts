@@ -58,7 +58,7 @@ describe('classTiming', () => {
     ).toEqual({kind: 'no-field'});
   });
 
-  it('shows every class fastest first, his marked, lap times approximate to a tenth', () => {
+  it('shows every class fastest first, his marked, lap times to a tenth', () => {
     const t = ready(
       classTiming({
         sessions: [session('race', 97.04, 110.26, 103.5)],
@@ -68,13 +68,13 @@ describe('classTiming', () => {
       }),
     );
     expect(t.rows.map(r => [r.label, r.lapText, r.mine])).toEqual([
-      ['Hypercar', '≈1:37.0', false],
-      ['LMP2', '≈1:43.5', false],
-      ['GT3', '≈1:50.3', true],
+      ['Hypercar', '1:37.0', false],
+      ['LMP2', '1:43.5', false],
+      ['GT3', '1:50.3', true],
     ]);
   });
 
-  it('without his laps (a car not driven here) still shows the classes, with no gain', () => {
+  it('without his laps (a car not driven here) still shows the classes, with no vs you', () => {
     const t = ready(
       classTiming({
         sessions: [session('race', 97, 110)],
@@ -83,10 +83,10 @@ describe('classTiming', () => {
         stopsAfter: [],
       }),
     );
-    expect(t.rows.map(r => r.lapText)).toEqual(['≈1:37.0', '≈1:50.0']);
+    expect(t.rows.map(r => r.lapText)).toEqual(['1:37.0', '1:50.0']);
     expect(
       t.rows.every(
-        r => r.gainText === '—' && r.firstText === '—' && r.passes.length === 0,
+        r => r.vsText === '—' && r.firstText === '—' && r.passes.length === 0,
       ),
     ).toBe(true);
     expect(t.you).toBeNull();
@@ -107,9 +107,9 @@ describe('classTiming', () => {
       }),
     );
     const hyper = row(t, 'hypercar');
-    // The median of 96, 98 and 100 is 98: a gain of 12 s, 98 / 12 = 8.2 of his laps.
-    expect(hyper.lapText).toBe('≈1:38.0');
-    expect(hyper.gainText).toBe('+12.0');
+    // The median of 96, 98 and 100 is 98: 12 s a lap faster, 98 / 12 = 8.2 of his laps.
+    expect(hyper.lapText).toBe('1:38.0');
+    expect(hyper.vsText).toBe('−12.0');
     expect(hyper.everyText).toBe('~8 laps');
     expect(hyper.srcText).toBe('3 races · 270 laps');
   });
@@ -127,9 +127,9 @@ describe('classTiming', () => {
         stopsAfter: [],
       }),
     );
-    expect(row(t, 'hypercar').lapText).toBe('≈1:38.0');
+    expect(row(t, 'hypercar').lapText).toBe('1:38.0');
     expect(row(t, 'hypercar').srcText).toBe('1 race · 90 laps');
-    expect(row(t, 'lmp2').lapText).toBe('≈1:42.0');
+    expect(row(t, 'lmp2').lapText).toBe('1:42.0');
     expect(row(t, 'lmp2').srcText).toBe('2 practices · 180 laps');
   });
 
@@ -173,7 +173,7 @@ describe('classTiming', () => {
     );
   });
 
-  it('a slower class gets a signed gain and no catch; his own class gets neither', () => {
+  it('a slower class reads plus, a faster one minus; no catch for the slower; his own class gets neither', () => {
     const t = ready(
       classTiming({
         sessions: [session('race', 96, 110)],
@@ -184,12 +184,12 @@ describe('classTiming', () => {
     );
     expect(row(t, 'hypercar')).toMatchObject({
       mine: true,
-      gainText: '—',
+      vsText: '—',
       firstText: '—',
     });
     expect(row(t, 'gt3')).toMatchObject({
       mine: false,
-      gainText: '−13.0',
+      vsText: '+13.0',
       firstText: '—',
       everyText: '—',
       passes: [],
