@@ -25,6 +25,7 @@ const session = (
   lmp2: number | null = null,
 ): ClassSession => ({
   kind,
+  player: 'gt3',
   byClass: {
     ...(hyper != null && {hypercar: lapsOf(hyper, 90)}),
     ...(lmp2 != null && {lmp2: lapsOf(lmp2, 90)}),
@@ -108,7 +109,7 @@ describe('classTiming', () => {
     const hyper = row(t, 'hypercar');
     // The median of 96, 98 and 100 is 98: a gain of 12 s, 98 / 12 = 8.2 of his laps.
     expect(hyper.lapText).toBe('≈1:38.0');
-    expect(hyper.gainText).toBe('+12.0 s');
+    expect(hyper.gainText).toBe('+12.0');
     expect(hyper.everyText).toBe('~8 laps');
     expect(hyper.srcText).toBe('3 races · 270 laps');
   });
@@ -188,11 +189,48 @@ describe('classTiming', () => {
     });
     expect(row(t, 'gt3')).toMatchObject({
       mine: false,
-      gainText: '−13.0 s',
+      gainText: '−13.0',
       firstText: '—',
       everyText: '—',
       passes: [],
     });
+  });
+
+  it('takes grid gaps only from races he drove in his own class', () => {
+    const race = (
+      player: 'gt3' | 'hypercar',
+      gap: {firstS: number; lastS: number},
+    ) => {
+      const s = session('race', 98, 110, 101);
+      s.player = player;
+      s.byClass.lmp2!.gap = gap;
+      return s;
+    };
+    const t = ready(
+      classTiming({
+        sessions: [
+          race('gt3', {firstS: 20, lastS: 10}),
+          // Measured from a Hypercar start, where LMP2 started behind him.
+          race('hypercar', {firstS: -30, lastS: -40}),
+        ],
+        mine,
+        raceLaps: 60,
+        stopsAfter: [],
+      }),
+    );
+    expect(row(t, 'lmp2').srcText).toBe(
+      '2 races · 180 laps · grid gap 10–20 s',
+    );
+  });
+
+  it('a first catch band inside one lap names that lap once', () => {
+    const s = session('race', null, 110);
+    // p10 98 s: 98 / 12 = 8.2 laps; p90 98.5 s: 98.5 / 11.5 = 8.6 laps.
+    s.byClass.hypercar = {medianS: 98.2, p10S: 98, p90S: 98.5, laps: 50};
+    const t = ready(
+      classTiming({sessions: [s], mine, raceLaps: 60, stopsAfter: []}),
+    );
+    expect(row(t, 'hypercar').firstText).not.toContain('–');
   });
 
   it('gives his own median with the laps it rests on', () => {
@@ -266,18 +304,26 @@ describe('classSessionOf', () => {
   });
 
   it('turns a stored race or practice field into the model input', () => {
-    expect(classSessionOf({sim: 'lmu', classLaps: doc({})})).toEqual({
+    expect(
+      classSessionOf({sim: 'lmu', carClass: 'GT3', classLaps: doc({})}),
+    ).toEqual({
       kind: 'race',
+      player: 'gt3',
       byClass: {gt3: {medianS: 215.4, p10S: 213, p90S: 219, laps: 120}},
     });
     expect(
-      classSessionOf({sim: 'lmu', classLaps: doc({kind: 'practice'})})?.kind,
+      classSessionOf({
+        sim: 'lmu',
+        carClass: 'GT3',
+        classLaps: doc({kind: 'practice'}),
+      })?.kind,
     ).toBe('practice');
   });
 
   it('carries the grid gap of a class', () => {
     const s = classSessionOf({
       sim: 'lmu',
+      carClass: 'GT3',
       classLaps: doc({startGapsS: {gt3: {firstS: 14, lastS: 12.5}}}),
     });
     expect(s?.byClass.gt3?.gap).toEqual({firstS: 14, lastS: 12.5});
@@ -285,19 +331,35 @@ describe('classSessionOf', () => {
 
   it('leaves out qualifying, no field and a field with no class pace', () => {
     expect(
-      classSessionOf({sim: 'lmu', classLaps: doc({kind: 'qualify'})}),
+      classSessionOf({
+        sim: 'lmu',
+        carClass: 'GT3',
+        classLaps: doc({kind: 'qualify'}),
+      }),
     ).toBeNull();
-    expect(classSessionOf({sim: 'lmu', classLaps: null})).toBeNull();
     expect(
-      classSessionOf({sim: 'lmu', classLaps: doc({classes: null})}),
+      classSessionOf({sim: 'lmu', carClass: 'GT3', classLaps: null}),
+    ).toBeNull();
+    expect(
+      classSessionOf({
+        sim: 'lmu',
+        carClass: 'GT3',
+        classLaps: doc({classes: null}),
+      }),
     ).toBeNull();
   });
 
   it('keeps an LMU doc from before version 6, not an iRacing one (its classes were wrong)', () => {
     const v5 = doc({version: 5, player: null});
-    expect(classSessionOf({sim: 'lmu', classLaps: v5})).not.toBeNull();
-    expect(classSessionOf({sim: 'iracing', classLaps: v5})).toBeNull();
-    expect(classSessionOf({sim: 'iracing', classLaps: doc({})})).not.toBeNull();
+    expect(
+      classSessionOf({sim: 'lmu', carClass: 'GT3', classLaps: v5}),
+    ).not.toBeNull();
+    expect(
+      classSessionOf({sim: 'iracing', carClass: 'IMSA23', classLaps: v5}),
+    ).toBeNull();
+    expect(
+      classSessionOf({sim: 'iracing', carClass: 'IMSA23', classLaps: doc({})}),
+    ).not.toBeNull();
   });
 });
 

@@ -15,7 +15,18 @@ import {type StopWindow} from '../planCards';
 import {PlanCard} from './PlanCard';
 import {RaceTimelineView} from './RaceTimelineView';
 
-const COLUMNS = ['Class', 'Lap', 'Gain', 'First', 'Every'];
+// Units sit in the heads so a phone cell holds one line; the widths are
+// shares of the row, sized so every head and cell fits at 375 pt.
+const COLUMNS = [
+  {head: 'Class', flex: 1},
+  {head: 'Lap', flex: 1.1},
+  {head: 'Gain, s', flex: 0.9},
+  {head: 'First', flex: 1},
+  {head: 'Every', flex: 1.3},
+];
+const flexOf = (i: number) => ({flex: COLUMNS[i].flex});
+// The You line fills only the Lap column; this holds the rest of the row.
+const AFTER_LAP = {flex: COLUMNS.slice(2).reduce((a, c) => a + c.flex, 0)};
 
 /**
  * Class pace on the Plan (round 6, section 2; D55), on both widths and in
@@ -117,13 +128,13 @@ function ClassPaceCard({timing}: {timing: ReadyClassTiming}) {
   return (
     <PlanCard title='Class pace'>
       <View style={styles.row}>
-        {COLUMNS.map(h => (
+        {COLUMNS.map((c, i) => (
           <Text
-            key={h}
+            key={c.head}
             variant='tableHeader'
             tone='textMuted'
-            style={h === 'Class' ? styles.name : styles.cell}>
-            {h}
+            style={flexOf(i)}>
+            {c.head}
           </Text>
         ))}
       </View>
@@ -146,12 +157,12 @@ function ClassLine({row}: {row: ClassRow}) {
   return (
     <View style={[styles.box, {borderColor: color.line}]}>
       <View style={styles.row}>
-        <Text variant='bodyStrong' style={styles.name}>
+        <Text variant='bodyStrong' style={flexOf(0)}>
           {row.label}
         </Text>
         {[row.lapText, row.gainText, row.firstText, row.everyText].map(
           (v, i) => (
-            <Text key={i} variant='dataStrong' style={styles.cell}>
+            <Text key={i} variant='dataStrong' style={flexOf(i + 1)}>
               {v}
             </Text>
           ),
@@ -168,13 +179,13 @@ function YouLine({you}: {you: NonNullable<ReadyClassTiming['you']>}) {
   return (
     <View style={styles.you}>
       <View style={styles.row}>
-        <Text variant='bodyStrong' style={styles.name}>
+        <Text variant='bodyStrong' style={flexOf(0)}>
           You
         </Text>
-        <Text variant='dataStrong' style={styles.cell}>
+        <Text variant='dataStrong' style={flexOf(1)}>
           {you.lapText}
         </Text>
-        <View style={styles.rest} />
+        <View style={AFTER_LAP} />
       </View>
       <Text variant='dataSmall' tone='textMuted'>
         {you.srcText}
@@ -193,10 +204,6 @@ const styles = StyleSheet.create({
   },
   head: {flexDirection: 'row', alignItems: 'center', gap: space.sm},
   row: {flexDirection: 'row', alignItems: 'center', gap: space.sm},
-  name: {flex: 1.2},
-  cell: {flex: 1},
-  // The You line fills only the Lap column; the rest stays empty.
-  rest: {flex: 3, minWidth: 0},
   box: {gap: space.xs, paddingVertical: space.md, borderTopWidth: 1},
   you: {gap: space.xs, paddingBottom: space.md},
 });

@@ -1,4 +1,8 @@
-import {type PaceClass, type StartGap} from '@/src/analysis/classLaps';
+import {
+  paceClass,
+  type PaceClass,
+  type StartGap,
+} from '@/src/analysis/classLaps';
 import {type SessionClassLaps} from '@/src/data/sessions';
 import {formatLapTime} from '@/src/design';
 
@@ -18,6 +22,8 @@ const MAX_PASSES = 20;
 /** One session at the track with other cars' laps, as this model reads it. */
 export type ClassSession = {
   kind: 'race' | 'practice';
+  /** The class he drove in it: grid gaps are measured from his car, so only his own class's races give his gaps. */
+  player: PaceClass | null;
   /** Per class: the median green lap of its cars in that session, and how many laps it rests on. */
   byClass: Partial<
     Record<
@@ -49,6 +55,7 @@ const MIN_VERSION: Partial<Record<string, number>> = {iracing: 6};
  */
 export function classSessionOf(s: {
   sim: string;
+  carClass: string;
   classLaps: SessionClassLaps | null;
 }): ClassSession | null {
   const doc = s.classLaps;
@@ -66,7 +73,9 @@ export function classSessionOf(s: {
       }),
     };
   }
-  return {kind: doc.kind, byClass};
+  // Docs before version 6 do not name his class; LMU's car class says it.
+  const player = doc.player ?? (s.carClass ? paceClass(s.carClass) : null);
+  return {kind: doc.kind, player, byClass};
 }
 
 export type ClassTimingInput = {
@@ -104,10 +113,11 @@ export type ClassRow = {
   mine: boolean;
   /** "≈1:38.0": the pooled median lap, approximate (line crossings at 5 Hz). */
   lapText: string;
-  /** Seconds a lap the class is faster than his median, signed: "+12.0 s" faster, "−3.1 s" slower. */
+  /** Seconds a lap the class is faster than his median, signed: "+12.0" faster, "−3.1" slower (the head says s). */
   gainText: string;
   /** Where, in his laps, it first reaches him: "L8–L11". */
   firstText: string;
+  /** His laps between one pass and the next: "~7 laps". */
   everyText: string;
   /** "3 races · 280 laps · grid gap 10–20 s" */
   srcText: string;
@@ -174,17 +184,25 @@ type Pooled = {
  * The median of the per-session medians: one long race does not outweigh the
  * rest. Races alone whenever the class raced here: lapping is about race pace
  * (fuel, tyres, traffic), and practice laps are push laps. Practice only when
- * no race saw the class (bias, pit-wall thread 1 #4044).
+ * no race saw the class (bias, pit-wall thread 1 #4044). The grid gap is
+ * measured from his car, so it comes only from races he drove in `mine`: a
+ * gap to a Hypercar start says nothing about his GT3 start.
  */
-function pool(sessions: ClassSession[], key: PaceClass): Pooled | null {
+function pool(
+  sessions: ClassSession[],
+  key: PaceClass,
+  mine: PaceClass | null,
+): Pooled | null {
   const seen = sessions.flatMap(s => {
     const c = s.byClass[key];
-    return c ? [{kind: s.kind, ...c}] : [];
+    return c ? [{kind: s.kind, player: s.player, ...c}] : [];
   });
   if (seen.length === 0) return null;
   const races = seen.filter(s => s.kind === 'race');
   const used = races.length > 0 ? races : seen;
-  const gaps = used.flatMap(s => (s.gap == null ? [] : [s.gap]));
+  const gaps = used.flatMap(s =>
+    s.gap == null || mine == null || s.player !== mine ? [] : [s.gap],
+  );
   return {
     medianS: median(used.map(s => s.medianS)),
     p10S: median(used.map(s => s.p10S)),
@@ -261,10 +279,12 @@ export function passesOf(
   return out;
 }
 
-const rangeText = (lo: number, hi: number) =>
-  Number.isFinite(hi)
-    ? `${lapName(Math.ceil(lo))}–${lapName(Math.floor(hi))}`
-    : `${lapName(Math.ceil(lo))} or later`;
+function rangeText(lo: number, hi: number): string {
+  const first = Math.ceil(lo);
+  if (!Number.isFinite(hi)) return `${lapName(first)} or later`;
+  const last = Math.max(first, Math.floor(hi));
+  return first === last ? lapName(first) : `${lapName(first)}–${lapName(last)}`;
+}
 
 /** The words in a class lane that has no pass inside the race. */
 export const noPassText = (raceLaps: number, firstText: string) =>
@@ -275,7 +295,7 @@ export function classTiming(input: ClassTimingInput): ClassTiming {
   const myLap = mine.medianLapS;
 
   const pooled = SHOWN.flatMap(key => {
-    const p = pool(sessions, key);
+    const p = pool(sessions, key, mine.key);
     return p ? [{key, p}] : [];
   }).sort((a, b) => a.p.medianS - b.p.medianS);
   if (pooled.length === 0) return {kind: 'no-field'};
@@ -304,7 +324,7 @@ export function classTiming(input: ClassTimingInput): ClassTiming {
     const reaches = gainS > 0;
     return {
       ...base,
-      gainText: `${gainS >= 0 ? '+' : '−'}${Math.abs(gainS).toFixed(1)} s`,
+      gainText: `${gainS >= 0 ? '+' : '−'}${Math.abs(gainS).toFixed(1)}`,
       firstText: reaches
         ? rangeText(
             firstCatch(p.p10S, myLap, gap.firstS),
