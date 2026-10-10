@@ -339,21 +339,27 @@ export function buildCornerModel(input: {
   const firstIdx = all.findIndex(c => c.n === (whole ? members[0].n : sec.n));
   const sectionApexM = map.sections[sec.sectionIndex].apexM;
   const byId = new Map(laps.map(l => [l.id, l]));
-  const selected = lapIds
-    .map(id => byId.get(id))
-    .filter((l): l is Lap => l != null);
+  // The set: the laps the basis is measured over (ticked, or the opening set).
+  const set = lapIds.map(id => byId.get(id)).filter((l): l is Lap => l != null);
+  // A highlighted lap outside the set is shown, but joins no median: a tap is
+  // for looking, ticking is the one way to change the set.
+  const hlLap =
+    input.hl && !lapIds.includes(input.hl) ? byId.get(input.hl) : undefined;
+  const selected = hlLap ? [...set, hlLap] : set;
   // The basis: the Ref lap when one is picked, else the median of the set,
   // column by column (Compare's rule since #445). No lap is the reference.
   const ref =
-    input.refId && selected.some(l => l.id === input.refId)
-      ? selected.find(l => l.id === input.refId)
+    input.refId && set.some(l => l.id === input.refId)
+      ? set.find(l => l.id === input.refId)
       : undefined;
-  const mode = lapMode(selected.length);
+  const mode = lapMode(set.length);
   const hl =
-    input.hl && lapIds.includes(input.hl) ? input.hl : selected[1]?.id ?? null;
+    input.hl && selected.some(l => l.id === input.hl)
+      ? input.hl
+      : set[1]?.id ?? null;
 
   // One entry part for the whole set, so a column never mixes apexes.
-  const entryN = whole ? entryPartOf(selected, all, sec) : null;
+  const entryN = whole ? entryPartOf(set, all, sec) : null;
   const sourcesOf = (l: Lap) =>
     cornerSources(l, all, sec, whole, sectionApexM, entryN);
   const valuesOf = (l: Lap): Record<Measure, number | null> => {
@@ -401,7 +407,7 @@ export function buildCornerModel(input: {
   const isAtMin = (l: Lap) =>
     sourcesOf(l).throttle.facts?.fullThrottleAtEdge === true;
   // Per column: the Ref's value, or the median of the set's non-null values.
-  const allValues = selected.map(valuesOf);
+  const allValues = set.map(valuesOf);
   const refValues = ref ? valuesOf(ref) : null;
   const basis = Object.fromEntries(
     MEASURES.map(m => [
@@ -457,7 +463,7 @@ export function buildCornerModel(input: {
   });
 
   const strips: StripModel[] | null =
-    selected.length >= STRIP_MODE_FROM
+    set.length >= STRIP_MODE_FROM
       ? buildStrips(
           rows.map(r => {
             const src = sourcesOf(byId.get(r.lapId) as Lap);
@@ -561,7 +567,7 @@ export function buildCornerModel(input: {
   const mapView = cornerView(all, idx, mapWindow, map.lengthM);
 
   // The median basis trace is the one Compare builds (medianBasisOf).
-  const refTrace = ref ? traces.get(ref.id) : medianBasisOf(selected, traces);
+  const refTrace = ref ? traces.get(ref.id) : medianBasisOf(set, traces);
   const lines: ZoomLine[] = rows.flatMap(r => {
     const t = traces.get(r.lapId);
     if (!t) return [];
@@ -607,9 +613,9 @@ export function buildCornerModel(input: {
       : turnTitleOf(turnLabel(corner, sec.official)),
     subtitle: [
       `in ${sec.sectionLabel}`,
-      `${selected.length} lap${selected.length === 1 ? '' : 's'}`,
+      `${set.length} lap${set.length === 1 ? '' : 's'}`,
       // The basis, named the way Compare names it: a Ref lap, else the median.
-      ref ? `vs L${ref.lapIndex}` : `vs median of ${selected.length}`,
+      ref ? `vs L${ref.lapIndex}` : `vs median of ${set.length}`,
     ]
       .filter(Boolean)
       .join(' · '),
@@ -619,7 +625,7 @@ export function buildCornerModel(input: {
     window: buildSectionWindow({
       map,
       sectionN: sec.sectionN,
-      laps: selected,
+      laps: set,
       sessionLaps: laps,
       refId: input.refId ?? null,
     }),
