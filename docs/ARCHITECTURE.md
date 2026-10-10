@@ -61,6 +61,8 @@ Corner shows one corner's window: a section's window (boundary to boundary, `tra
 | Pickup, lowest throttle | the last part, measured from its apex; judged by the section's `minSpeedAtEdge` |
 | Full throttle | the last part, from its apex, for every lap (a lap already flat there reads "at min"); judged by the section's `minSpeedAtEdge` |
 
+The card's Run-in / Corner / Exit split every lap at the same two distances: the lap's own onset and the map's exit for that corner, never the lap's full-throttle point (that is the table's Full throttle column), so the Corner and Exit gaps do not trade seconds when a lap gets to the throttle early or late.
+
 A fact the source cannot supply is "—" (never a boundary value). The braking map spans first entry to last exit and places each lap's points from the same apexes.
 
 ## Data hooks (API v2, `/api/lmu`)

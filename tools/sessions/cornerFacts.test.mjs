@@ -110,6 +110,29 @@ test('a lap with no onset in a section (taken flat) still gets a window and a sp
   );
 });
 
+test("the corner/exit split is the map's exit on every lap, whatever the lap's full-throttle point (D43)", () => {
+  // Same driving, but the second lap holds the pedal at 60 % for 40 m past the
+  // corner: its full-throttle point moves, the speeds and so the times do not,
+  // and the split must not move with it.
+  const early = makeLap(580, 1380);
+  const late = makeLap(580, 1380);
+  const {speed_kmh: speed, throttle_pct: pedal} = late.rec.s;
+  let d = 0;
+  for (let i = 0; i < pedal.length; i++) {
+    if (d >= 800 && d < 840) pedal[i] = 60;
+    d += speed[i] / 3.6 / 100;
+  }
+  const both = layoutOf([early, late]);
+  const base = factsOf(early, both).corners[0];
+  const moved = factsOf(late, both).corners[0];
+  assert.ok(
+    moved.fullThrottleAtM - base.fullThrottleAtM >= 35,
+    `${moved.fullThrottleAtM} vs ${base.fullThrottleAtM}`,
+  );
+  assert.equal(moved.cornerS, base.cornerS);
+  assert.equal(moved.exitS, base.exitS);
+});
+
 test('boundaries pooled from comparable green laps only, and replaced on a resync', () => {
   const dirty = makeLap(300, 1380);
   dirty.lap.clean = false;
