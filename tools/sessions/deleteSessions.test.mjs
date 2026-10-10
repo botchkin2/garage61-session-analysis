@@ -61,6 +61,7 @@ const session = (id, owner = OWNER) => ({
   [`sessions/${id}`]: {ownerId: owner, sim: 'iracing', track: {name: 'Fuji'}, sessionType: 'Practice', startedAt: '2026-10-04'},
 });
 const lap = (id, sessionId, owner = OWNER) => ({[`laps/${id}`]: {sessionId, ownerId: owner}});
+const recording = (id, sessionId, owner = OWNER) => ({[`recordings/${id}`]: {sessionId, ownerId: owner}});
 
 function world() {
   return fakeStore(
@@ -136,6 +137,60 @@ test('an id the current grouping produces is refused', async () => {
   const plan = await planDelete(world(), {owner: OWNER, ids: [NEW, OLD], currentIds: new Set([NEW])});
   assert.match(plan.refusals[0].why, /current session/);
   await assert.rejects(applyDelete(world(), plan, {confirm: plan.hash}), /refused/);
+});
+
+test('a session a recording still points at is refused, and the count is printed', async () => {
+  const store = fakeStore({...session(OLD), ...lap('lap-1', OLD), ...recording('r1', OLD)});
+  const plan = await planDelete(store, {owner: OWNER, ids: [OLD]});
+  assert.match(plan.refusals[0].why, /1 recording\(s\) still point/);
+  await assert.rejects(applyDelete(store, plan, {confirm: plan.hash}), /refused/);
+  // Another owner's recording, or one re-pointed to the new id, does not count.
+  const moved = fakeStore({...session(OLD), ...recording('r1', NEW), ...recording('r2', OLD, 'owner-b')});
+  const ok = await planDelete(moved, {owner: OWNER, ids: [OLD]});
+  assert.deepEqual(ok.refusals, []);
+  assert.equal(ok.sessions[0].recordings, 0);
+  assert.ok(describePlan(ok).some(l => l.includes('recordings pointing here: 0')));
+});
+
+test('--archive lists both layouts: the Admin sync and the tray upload (ownerKey)', async () => {
+  const KEY = 'key-of-owner';
+  const store = fakeStore(
+    {...session(OLD), 'users/owner-a': {ownerKey: KEY}},
+    {
+      [`archive/iracing/${OLD}/r/samples.parquet`]: 5,
+      [`archive/${KEY}/iracing/${OLD}/r/samples.parquet`]: 6,
+      [`archive/${KEY}/iracing/${NEXT}/r/samples.parquet`]: 7,
+    },
+  );
+  const plan = await planDelete(store, {owner: OWNER, ids: [OLD], archive: true});
+  assert.deepEqual(
+    plan.sessions[0].files.map(f => f.path),
+    [`archive/iracing/${OLD}/r/samples.parquet`, `archive/${KEY}/iracing/${OLD}/r/samples.parquet`],
+  );
+  for (const p of sessionPrefixes({owner: OWNER, id: OLD, sim: 'iracing', archive: true, ownerKey: KEY}))
+    assert.ok(p.endsWith('/'), p);
+  // Without a users doc the key is the uid.
+  const plain = await planDelete(fakeStore({...session(OLD)}, {[`archive/${OWNER}/iracing/${OLD}/r/s.parquet`]: 1}), {owner: OWNER, ids: [OLD], archive: true});
+  assert.equal(plain.sessions[0].files.length, 1);
+});
+
+test('a throwing document batch still returns a record of what went and what failed', async () => {
+  const laps = Object.fromEntries(
+    Array.from({length: 1200}, (_, i) => [`laps/l${i}`, {sessionId: OLD, ownerId: OWNER}]),
+  );
+  const store = fakeStore({...session(OLD), ...laps});
+  const real = store.deleteDocs;
+  let calls = 0;
+  store.deleteDocs = async paths => {
+    if (++calls === 2) throw new Error('quota');
+    return real(paths);
+  };
+  const plan = await planDelete(store, {owner: OWNER, ids: [OLD]});
+  const record = await applyDelete(store, plan, {confirm: plan.hash});
+  assert.equal(record.docs.length, BATCH);
+  assert.equal(record.failed.length, 1);
+  assert.match(record.failed[0].error, /quota/);
+  assert.ok(store.docs[`sessions/${OLD}`], 'the session document stays as the handle');
 });
 
 test('a lap of the same session under another owner is never listed', async () => {

@@ -23,26 +23,39 @@
 // An id whose document, laps and objects are all gone is a no-op, so the same
 // command can be run again after a failure or after success.
 //
-// Laps point at their session by id. After a resync that re-points them (their
-// ids do not change), the old session has none; before it, they are the live
-// laps. The dry run says how many each id still has.
+// What says an id is old: recordings. A recording's id does not change when the
+// grouping does, and a resync overwrites `recordings/{id}` with the new
+// sessionId; lap ids are `<sessionId>-NNN`, so old laps are never re-pointed.
+// So while any recording of the owner still has sessionId == X, X is what the
+// store calls that recording's session today (the resync is unfinished, or X is
+// current): X is refused. The dry run prints the count (expected 0).
 import {createHash} from 'node:crypto';
 import {mkdirSync, writeFileSync} from 'node:fs';
-import {resolve} from 'node:path';
+import {tmpdir} from 'node:os';
+import {join, resolve} from 'node:path';
 
 export const BATCH = 500;
 const PREFIXES = ['bands', 'field', 'slices'];
 
-/** The prefixes of Storage objects that belong to session `id` of `owner`. */
-export function sessionPrefixes({owner, id, sim, archive}) {
+/**
+ * The prefixes of Storage objects that belong to session `id` of `owner`.
+ * The archive has two layouts: the Admin sync writes archive/{sim}/{id}/, the
+ * upload endpoint (the tray) writes archive/{ownerKey}/{sim}/{id}/ with
+ * ownerKey = users/{uid}.ownerKey ?? uid (functions/src/uploadCore.ts).
+ */
+export function sessionPrefixes({owner, id, sim, archive, ownerKey}) {
   const out = PREFIXES.map(p => `${p}/${owner}/${id}/`);
-  if (archive) out.push(`archive/${sim ?? 'lmu'}/${id}/`);
+  if (archive) {
+    out.push(`archive/${sim ?? 'lmu'}/${id}/`);
+    out.push(`archive/${ownerKey ?? owner}/${sim ?? 'lmu'}/${id}/`);
+  }
   return out;
 }
 
 /**
  * What deleting `ids` would remove, or why it must not run.
- * backend: getDoc(path), listBySession(coll, sessionId, ownerId),
+ * backend: getDoc(path), listBySession(coll, sessionId, ownerId) (laps and
+ *   recordings),
  *   listFiles(prefix) -> [{path, size}].
  * currentIds: ids the owner's folder groups into now (never deletable).
  */
@@ -52,6 +65,9 @@ export async function planDelete(
 ) {
   const refusals = [];
   const sessions = [];
+  const ownerKey = archive
+    ? ((await backend.getDoc(`users/${owner}`))?.ownerKey ?? owner)
+    : owner;
   for (const id of ids) {
     if (!/^[0-9a-f]{16}$/.test(id)) {
       refusals.push({id, why: 'not a session id (16 hex characters)'});
@@ -72,11 +88,28 @@ export async function planDelete(
       });
       continue;
     }
+    // A recording still pointing here means this id is live (see the header).
+    const recordings = (
+      await backend.listBySession('recordings', id, owner)
+    ).filter(r => r.data?.sessionId === id && r.data?.ownerId === owner);
+    if (recordings.length) {
+      refusals.push({
+        id,
+        why: `${recordings.length} recording(s) still point at this session: it is live, or the resync has not finished`,
+      });
+      continue;
+    }
     // Only this owner's laps of this session, checked on the document itself.
     const laps = (await backend.listBySession('laps', id, owner)).filter(
       lap => lap.data?.sessionId === id && lap.data?.ownerId === owner,
     );
-    const prefixes = sessionPrefixes({owner, id, sim: doc?.sim, archive});
+    const prefixes = sessionPrefixes({
+      owner,
+      id,
+      sim: doc?.sim,
+      archive,
+      ownerKey,
+    });
     for (const lap of laps) prefixes.push(`traces/${owner}/${lap.id}/`);
     const files = [];
     for (const prefix of prefixes) {
@@ -101,6 +134,7 @@ export async function planDelete(
             .filter(Boolean)
             .join(' · ')
         : 'already gone',
+      recordings: recordings.length,
       laps: laps.map(l => l.id).sort(),
       files: files.sort((a, b) => a.path.localeCompare(b.path)),
     });
@@ -129,12 +163,8 @@ export function describePlan(plan) {
     const bytes = s.files.reduce((a, f) => a + (f.size || 0), 0);
     lines.push(
       `${s.id}  ${s.label}`,
-      `    session doc: ${s.doc ?? 'none'}   lap docs: ${s.laps.length}   objects: ${s.files.length} (${(bytes / 1e6).toFixed(1)} MB)`,
+      `    recordings pointing here: ${s.recordings}   session doc: ${s.doc ?? 'none'}   lap docs: ${s.laps.length}   objects: ${s.files.length} (${(bytes / 1e6).toFixed(1)} MB)`,
     );
-    if (s.laps.length)
-      lines.push(
-        `    ${s.laps.length} lap doc(s) still point at this session: they are live laps unless a resync already re-pointed them`,
-      );
   }
   for (const r of plan.refusals) lines.push(`REFUSED ${r.id}: ${r.why}`);
   const nothing = plan.sessions.every(
@@ -188,11 +218,21 @@ export async function applyDelete(
   if (record.failed.length) return record;
   const lapPaths = plan.sessions.flatMap(s => s.laps.map(l => `laps/${l}`));
   const sessionPaths = plan.sessions.filter(s => s.doc).map(s => s.doc);
+  // A failed batch is recorded and stops the run; the session documents come
+  // last, so what is left is still the handle for the next run.
   for (const paths of [lapPaths, sessionPaths]) {
     for (let i = 0; i < paths.length; i += BATCH) {
       const chunk = paths.slice(i, i + BATCH);
-      await backend.deleteDocs(chunk);
-      record.docs.push(...chunk);
+      try {
+        await backend.deleteDocs(chunk);
+        record.docs.push(...chunk);
+      } catch (error) {
+        record.failed.push({
+          path: `${chunk.length} document(s) from ${chunk[0]}`,
+          error: String(error.message ?? error),
+        });
+        return record;
+      }
     }
   }
   return record;
@@ -261,7 +301,7 @@ async function main() {
     process.exit(plan.refusals.length ? 1 : 0);
   }
   const record = await applyDelete(backend, plan, {confirm: arg('--confirm')});
-  const path = writeRecord(arg('--log-dir', '.'), record);
+  const path = writeRecord(arg('--log-dir', join(tmpdir(), 'botracing-delete')), record);
   console.log(
     `deleted ${record.files.length} object(s), ${record.docs.length} document(s); ${record.failed.length} failed. Record: ${path}`,
   );
