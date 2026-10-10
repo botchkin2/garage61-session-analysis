@@ -540,17 +540,26 @@ function CornerView({
     );
   // Phone: the Compare link and the corner chips stay pinned, so stepping is
   // in reach wherever the page is scrolled.
+  // On a phone turned on its side the pinned rows would take most of the 375 pt,
+  // so they scroll with the page instead.
+  const pinnedRows = (
+    <>
+      {navRow}
+      {seekChips}
+      {partsRow}
+    </>
+  );
   return (
     <View style={[styles.screen, {backgroundColor: color.bg}]}>
-      <View
-        style={[
-          styles.pinned,
-          {backgroundColor: color.bg, paddingTop: top.paddingTop},
-        ]}>
-        {navRow}
-        {seekChips}
-        {partsRow}
-      </View>
+      {layout.isLandscapePhone ? null : (
+        <View
+          style={[
+            styles.pinned,
+            {backgroundColor: color.bg, paddingTop: top.paddingTop},
+          ]}>
+          {pinnedRows}
+        </View>
+      )}
       <ScrollView
         style={styles.flex}
         contentContainerStyle={[
@@ -560,6 +569,9 @@ function CornerView({
           // strips sized to it fit instead of overflowing past the gutter.
           {width: layout.contentWidth + 2 * space.xl, alignSelf: 'center'},
         ]}>
+        {layout.isLandscapePhone ? (
+          <View style={{paddingTop: insets.top}}>{pinnedRows}</View>
+        ) : null}
         {titleBlock}
         {body}
       </ScrollView>
