@@ -1,0 +1,52 @@
+# Publishes the JS bundle to the `production` channel with EAS Update, so
+# installed Android apps pick it up on their next launch without a new APK.
+# Runs on a push to main only when something the bundle is built from changed;
+# docs, tools, functions and desktop changes never run it.
+#
+# runtimeVersion is the "fingerprint" policy (app.json): an update reaches only
+# builds with the same native fingerprint. A native change needs a new APK
+# (docs/ANDROID_BUILD.md, Over-the-air updates).
+#
+# Runs in the `ota-update` Environment, which holds EXPO_TOKEN (no reviewer).
+name: OTA update
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'src/**'
+      - 'assets/**'
+      - 'app.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'babel.config.js'
+      - 'metro.config.js'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ota-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ota-update
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      # EAS reads the app config and fingerprint through the project's own expo package.
+      - run: npm ci
+
+      - name: Publish to production
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: >
+          npx --yes eas-cli@24.8.0 update --channel production
+          --message "${GITHUB_SHA::8}" --non-interactive
