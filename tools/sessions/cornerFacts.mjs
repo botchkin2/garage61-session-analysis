@@ -173,7 +173,8 @@ export function cornerFacts({
     // The corner ends at the map's exit for it, the same distance on every lap
     // (not where this lap got to full throttle: that moved time between corner
     // and exit, D43). A corner over the line has its exit at a smaller distance
-    // than its window's start: unroll it by one lap, where it lands past the end.
+    // than its window's start: unrolled by one lap it lands past the window's
+    // end, so the window has no exit (`exitS` null).
     const split = splitWindow(timeAt, u, {
       onsetM,
       exitM: u.exitM < u.fromM ? u.exitM + lengthM : u.exitM,
@@ -240,7 +241,7 @@ export function cornerFacts({
       toM: round(u.toM, 1),
       runInS: round(split.runInS, 3),
       cornerS: round(split.cornerS, 3),
-      exitS: round(split.exitS, 3),
+      exitS: split.exitS == null ? null : round(split.exitS, 3),
       onsetM: onsetM == null ? null : round(onsetM, 1),
       onsetSpeedKmh: onsetM == null ? null : speedAt(raw(onsetM)),
       fullThrottleSpeedKmh: held == null ? null : speedAt(raw(held)),

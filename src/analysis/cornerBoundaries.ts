@@ -637,8 +637,8 @@ export interface WindowSplit {
   runInS: number;
   /** From the onset to full throttle. */
   cornerS: number;
-  /** From full throttle to the next boundary. */
-  exitS: number;
+  /** From the corner's exit to the next boundary; null when the exit lies at or past the window's end (it happens in the next window: not measured here). */
+  exitS: number | null;
 }
 
 /**
@@ -650,7 +650,10 @@ export interface WindowSplit {
  * for every lap, so a lap that gets to the throttle earlier or later does not
  * move time between corner and exit (the lap's full-throttle point is its own
  * column, `fullThrottlePointM`). Both are clamped into the window and kept in
- * order. With no onset the corner starts at the window.
+ * order. With no onset the corner starts at the window. An exit at or past the
+ * window's end (the next window starts first, or the corner runs over the
+ * line) is not measured in this window: `exitS` is null and the corner runs to
+ * the window's end.
  */
 export function splitWindow(
   timeAt: (m: number) => number,
@@ -660,8 +663,14 @@ export function splitWindow(
   const {fromM, toM} = window;
   const clamp = (m: number) => Math.min(toM, Math.max(fromM, m));
   const onset = clamp(points.onsetM ?? fromM);
-  const full = Math.max(onset, clamp(points.exitM));
   const t0 = timeAt(fromM);
+  if (points.exitM >= toM)
+    return {
+      runInS: timeAt(onset) - t0,
+      cornerS: timeAt(toM) - timeAt(onset),
+      exitS: null,
+    };
+  const full = Math.max(onset, clamp(points.exitM));
   return {
     runInS: timeAt(onset) - t0,
     cornerS: timeAt(full) - timeAt(onset),

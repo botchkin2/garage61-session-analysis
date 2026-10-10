@@ -447,7 +447,7 @@ describe('splitWindow', () => {
   it('splits a window into run-in, corner and exit that add up to its time', () => {
     const s = splitWindow(timeAt, window, {onsetM: 1100, exitM: 1400});
     expect(s).toEqual({runInS: 2, cornerS: 6, exitS: 4});
-    expect(s.runInS + s.cornerS + s.exitS).toBe(timeAt(1600) - timeAt(1000));
+    expect(s.runInS + s.cornerS + s.exitS!).toBe(timeAt(1600) - timeAt(1000));
   });
 
   it('starts the corner at the window with no brake', () => {
@@ -478,20 +478,27 @@ describe('splitWindow', () => {
       exitM: 1400,
     });
     expect(s.runInS).toBeGreaterThan(0);
-    expect(s.runInS + s.cornerS + s.exitS).toBeCloseTo(12, 9);
+    expect(s.runInS + s.cornerS + s.exitS!).toBeCloseTo(12, 9);
   });
 
   it('keeps the points in the window and in order', () => {
     const early = splitWindow(timeAt, window, {onsetM: 900, exitM: 950});
     expect(early).toEqual({runInS: 0, cornerS: 0, exitS: 12});
     const late = splitWindow(timeAt, window, {onsetM: 1500, exitM: 1200});
-    expect(late.runInS + late.cornerS + late.exitS).toBeCloseTo(12, 9);
+    expect(late.runInS + late.cornerS + late.exitS!).toBeCloseTo(12, 9);
     expect(late.cornerS).toBe(0);
     // An exit past the window's end (the next window starts first): no exit.
+    // An exit at or past the window's end is not measured here: no exit time,
+    // not a zero; the corner runs to the end.
     expect(splitWindow(timeAt, window, {onsetM: 1100, exitM: 2000})).toEqual({
       runInS: 2,
       cornerS: 10,
-      exitS: 0,
+      exitS: null,
+    });
+    expect(splitWindow(timeAt, window, {onsetM: 1100, exitM: 1600})).toEqual({
+      runInS: 2,
+      cornerS: 10,
+      exitS: null,
     });
   });
 });
