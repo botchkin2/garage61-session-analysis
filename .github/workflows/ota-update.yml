@@ -19,24 +19,27 @@ name: OTA update
 on:
   push:
     branches: [main]
-    # Everything that can reach the bundle or the fingerprint runs it (src/,
-    # app/, assets/, tools/track-info via catalog.ts, tsconfig.json, eas.json,
-    # package files, configs); only what never does is ignored.
-    paths-ignore:
-      - 'docs/**'
-      - '**.md'
-      - 'desktop/**'
-      - 'functions/**'
-      - 'ops/**'
-      - 'scripts/**'
-      - 'tools/**'
-      - '!tools/track-info/**'
-      - '.claude/**'
-      - '.github/**'
-      - '!.github/workflows/ota-update.yml'
-      - 'firebase*.json'
-      - 'firestore.*'
-      - '.firebaserc'
+    # Everything runs it except what never reaches the bundle or the fingerprint
+    # (a deny-list, so a new import cannot silently fall out). `!` is documented
+    # for `paths` only; order matters, the re-includes follow their excludes:
+    # tools/track-info (src/data/tracks/catalog.ts imports its tracks.json) and
+    # this workflow.
+    paths:
+      - '**'
+      - '!docs/**'
+      - '!**.md'
+      - '!desktop/**'
+      - '!functions/**'
+      - '!ops/**'
+      - '!scripts/**'
+      - '!tools/**'
+      - 'tools/track-info/**'
+      - '!.claude/**'
+      - '!.github/**'
+      - '.github/workflows/ota-update.yml'
+      - '!firebase*.json'
+      - '!firestore.*'
+      - '!.firebaserc'
 
 permissions:
   contents: read
