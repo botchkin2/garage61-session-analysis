@@ -326,6 +326,27 @@ describe('the median basis (no Ref picked)', () => {
     }
   });
 
+  it('a highlighted lap outside the set is shown, and moves no median', () => {
+    const m = buildCornerModel({
+      session,
+      laps,
+      map,
+      band: null,
+      traces: new Map(),
+      lapIds: ['a', 'b', 'c'],
+      refId: null,
+      keyLapIds: ['a', 'b', 'c', 'x'],
+      hl: 'x',
+      corner: 3,
+    })!;
+    expect(m.subtitle).toContain('3 laps · vs median of 3');
+    expect(m.rows.map(r => r.lapId)).toContain('x');
+    const basisOnly = median(['a', 'b', 'c'], null);
+    const gap = (mm: typeof m, id: string) =>
+      mm.rows.find(r => r.lapId === id)!.cells.time.gap;
+    expect(gap(m, 'a')).toBe(gap(basisOnly, 'a'));
+  });
+
   it('a picked Ref is the basis, and it has no difference against itself', () => {
     const m = median(['a', 'b', 'c'], 'b');
     expect(m.subtitle).toContain('vs L');

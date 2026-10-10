@@ -400,11 +400,11 @@ describe('gridCellTargetOf (Road Atlanta numbering)', () => {
     expect(gridCellTargetOf(table, 2, 'L4', ['L4'])?.whole).toBe(true);
   });
 
-  it('adds the tapped lap to the checked laps when it is not in them', () => {
+  it('keeps the checked set: the tapped lap is only a highlight', () => {
     expect(gridCellTargetOf(table, 1, 'L1', ['L4', 'L5'])).toEqual({
       corner: 1,
       whole: false,
-      laps: ['L4', 'L5', 'L1'],
+      laps: ['L4', 'L5'],
     });
   });
 

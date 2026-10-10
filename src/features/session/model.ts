@@ -340,11 +340,20 @@ export function sectionTable(
   return {
     heads: times.segments.map(s => s.label),
     sections: times.segments.map(s => s.section ?? null),
-    targets: times.segments.map(s => ({
-      corner:
-        s.section != null && corners ? firstCornerOf(corners, s.section) : null,
-      whole: s.compound === true,
-    })),
+    targets: times.segments.map(s => {
+      const section =
+        s.section == null
+          ? undefined
+          : map?.sections.find(x => x.n === s.section);
+      return {
+        corner:
+          s.section != null && corners
+            ? firstCornerOf(corners, s.section)
+            : null,
+        // A compound section (more than one corner) opens whole, read from the map.
+        whole: section ? section.parts.length > 1 : s.compound === true,
+      };
+    }),
     footer: [
       row(
         'Median',
@@ -639,8 +648,8 @@ export function useSessionScreenModel(id: string, selection: Selection) {
 
 /**
  * Where a grid cell (lap x column) opens Corner: the column's first corner,
- * whole for a compound section, with the lap highlighted and added to the
- * checked laps if it is not in them. Null where the column has no corner (the
+ * whole for a compound section; the tapped lap is the highlight, not added to
+ * the set. Null where the column has no corner (the
  * start straight). Pure: the grid's taps and their tests read this one place.
  */
 export function gridCellTargetOf(
@@ -651,6 +660,6 @@ export function gridCellTargetOf(
 ): {corner: number; whole: boolean; laps: string[]} | null {
   const t = table.targets[column];
   if (!t || t.corner == null) return null;
-  const laps = checked.includes(lapId) ? checked : [...checked, lapId];
-  return {corner: t.corner, whole: t.whole, laps};
+  // The set is unchanged: the tapped lap is only highlighted.
+  return {corner: t.corner, whole: t.whole, laps: checked};
 }
