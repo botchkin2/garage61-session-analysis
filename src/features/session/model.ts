@@ -13,12 +13,14 @@ import {
 
 import {
   defaultSessionOf,
+  firstCornerOf,
   openingLapIds,
   raceFactsOfPlan,
   type Lap,
   type SessionDetail,
   sectorSegmentTimes,
   segmentTimesFor,
+  trackCorners,
   type TrackMapData,
   useSession,
   useSessionLaps,
@@ -137,15 +139,35 @@ export type DetailModel = {
   action: 'add' | 'remove';
 };
 
+/** One stint the tray can select in a tap (D16/D17): its comparable laps. */
+export type StintPick = {
+  n: number;
+  /** "2", under a Stint label (S1-S3 are the sector heads). */
+  label: string;
+  lapIds: string[];
+  /** The selection is exactly this stint's comparable laps. */
+  active: boolean;
+};
+
 export type TrayModel = {
   laps: {lapId: string; selIndex: number}[];
   label: string;
   count: number;
+  /** Two or more stints with comparable laps; empty otherwise (one stint is already the default set). */
+  stints: StintPick[];
 };
 
 /** The desktop Laps table's section columns: their heads, and the median, best and spread rows under it. */
 export type SectionTable = {
   heads: string[];
+  /** The map section each head is (null for the start straight and the game's sectors). */
+  sections: (number | null)[];
+  /**
+   * Where a cell in each column opens Corner: the section's first corner (its
+   * number, not the section's), and whether the section is compound (opens
+   * whole). Null for the start straight and the game's sectors.
+   */
+  targets: {corner: number | null; whole: boolean}[];
   footer: {label: string; cells: string[]}[];
 };
 
@@ -312,9 +334,13 @@ function cellsOf(
  * no tow) has no statistics; its median cell then gives that count, and the
  * others stay dashes, so one number is shown once.
  */
-export function sectionTable(times: SegmentTimes | null): SectionTable | null {
+export function sectionTable(
+  times: SegmentTimes | null,
+  map?: TrackMapData | null,
+): SectionTable | null {
   if (!times) return null;
   const stats = segmentStats(times);
+  const corners = map ? trackCorners(map) : null;
   const row = (
     label: string,
     pick: (s: (typeof stats)[number]) => number | null,
@@ -329,6 +355,21 @@ export function sectionTable(times: SegmentTimes | null): SectionTable | null {
   });
   return {
     heads: times.segments.map(s => s.label),
+    sections: times.segments.map(s => s.section ?? null),
+    targets: times.segments.map(s => {
+      const section =
+        s.section == null
+          ? undefined
+          : map?.sections.find(x => x.n === s.section);
+      return {
+        corner:
+          s.section != null && corners
+            ? firstCornerOf(corners, s.section)
+            : null,
+        // A compound section (more than one corner) opens whole, read from the map.
+        whole: section ? section.parts.length > 1 : s.compound === true,
+      };
+    }),
     footer: [
       row(
         'Median',
@@ -482,16 +523,25 @@ export function buildSessionModel(
   };
 
   const selected = checked;
-  const tray: TrayModel | null = selected.length
-    ? {
-        laps: selected.map(l => ({lapId: l.id, selIndex: slotOf.get(l.id) as number})),
-        count: selected.length,
-        label:
-          selected.length <= 3
-            ? selected.map(lapLabel).join(' · ')
-            : `${selected.length} laps`,
-      }
-    : null;
+  const stints = stintPicks(rows, selection.laps);
+  // The tray stays while there are stints to pick, even with nothing selected.
+  const tray: TrayModel | null =
+    selected.length || stints.length
+      ? {
+          laps: selected.map(l => ({
+            lapId: l.id,
+            selIndex: slotOf.get(l.id) as number,
+          })),
+          count: selected.length,
+          label:
+            selected.length === 0
+              ? ''
+              : selected.length <= 3
+              ? selected.map(lapLabel).join(' · ')
+              : `${selected.length} laps`,
+          stints,
+        }
+      : null;
 
   const bestLap = laps.find(l => l.id === session.bestLapId);
   const trafficPace = trafficPaceFacts(session);
@@ -539,7 +589,7 @@ export function buildSessionModel(
           session.stints.length,
         )
       : [],
-    sections: sectionTable(sectionTimes),
+    sections: sectionTable(sectionTimes, map),
     chart,
     noComparable,
     rows,
@@ -618,4 +668,46 @@ export function useSessionScreenModel(id: string, selection: Selection) {
     selection,
     sectionMode,
   ]);
+}
+
+/**
+ * Where a grid cell (lap x column) opens Corner: the column's first corner,
+ * whole for a compound section; the tapped lap is the highlight, not added to
+ * the set. Null where the column has no corner (the
+ * start straight). Pure: the grid's taps and their tests read this one place.
+ */
+export function gridCellTargetOf(
+  table: SectionTable,
+  column: number,
+  lapId: string,
+  checked: string[],
+): {corner: number; whole: boolean; laps: string[]} | null {
+  const t = table.targets[column];
+  if (!t || t.corner == null) return null;
+  // The set is unchanged: the tapped lap is only highlighted.
+  return {corner: t.corner, whole: t.whole, laps: checked};
+}
+
+/**
+ * The stints the tray offers (D16/D17: pick a stint, compare, untick an
+ * outlier, three taps): each stint header's comparable laps, when two or more
+ * stints have any. A stint is active when the selection is exactly its laps,
+ * in any order.
+ */
+export function stintPicks(rows: RowModel[], selected: string[]): StintPick[] {
+  const picks = rows.flatMap(r =>
+    r.kind === 'stint' && r.lapIds.length > 0 ? [r] : [],
+  );
+  if (picks.length < 2) return [];
+  const chosen = new Set(selected);
+  return picks.map(r => {
+    const n = Number(r.key.slice('stint-'.length));
+    return {
+      n,
+      label: String(n),
+      lapIds: r.lapIds,
+      active:
+        r.lapIds.length === chosen.size && r.lapIds.every(id => chosen.has(id)),
+    };
+  });
 }
