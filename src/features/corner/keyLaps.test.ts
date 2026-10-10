@@ -94,10 +94,10 @@ describe('keyLapIds', () => {
 });
 
 describe('resetLapIds', () => {
-  it('keeps the picked Ref and the best lap', () => {
-    expect(resetLapIds('l3', 'l9')).toEqual(['l3', 'l9']);
-    expect(resetLapIds(null, 'l9')).toEqual(['l9']);
-    expect(resetLapIds('l9', 'l9')).toEqual(['l9']);
-    expect(resetLapIds(null, null)).toEqual([]);
+  it('is the opening set, with the picked Ref kept', () => {
+    expect(resetLapIds(null, ['a', 'b', 'c'])).toEqual(['a', 'b', 'c']);
+    expect(resetLapIds('b', ['a', 'b', 'c'])).toEqual(['a', 'b', 'c']);
+    expect(resetLapIds('z', ['a', 'b'])).toEqual(['z', 'a', 'b']);
+    expect(resetLapIds(null, [])).toEqual([]);
   });
 });

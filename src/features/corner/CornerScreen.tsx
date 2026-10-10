@@ -153,7 +153,7 @@ export function CornerScreen({
       model={result.model}
       lapIds={result.lapIds}
       keyLapIds={result.keyLapIds}
-      bestLapId={result.bestLapId}
+      openingIds={result.openingIds}
       traceLoad={result.traceLoad}
       onRetryTraces={result.retryTraces}
       selection={selection}
@@ -169,7 +169,7 @@ function CornerView({
   model,
   lapIds,
   keyLapIds,
-  bestLapId,
+  openingIds,
   traceLoad,
   onRetryTraces,
   selection,
@@ -181,7 +181,7 @@ function CornerView({
   model: CornerModel;
   lapIds: string[];
   keyLapIds: string[];
-  bestLapId: string | null;
+  openingIds: string[];
   traceLoad: TraceLoad;
   onRetryTraces: () => void;
   selection: CornerSelection;
@@ -368,12 +368,12 @@ function CornerView({
           {canToggle && selection.laps.length >= 2 ? (
             <View style={styles.row}>
               <Chip
-                label='Reset to best'
+                label='Reset'
                 onPress={() => {
                   setNotice(null);
                   onSelectionChange({
                     ...selection,
-                    laps: resetLapIds(selection.ref, bestLapId),
+                    laps: resetLapIds(selection.ref, openingIds),
                   });
                 }}
               />

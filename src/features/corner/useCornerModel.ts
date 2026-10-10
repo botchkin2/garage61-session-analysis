@@ -3,6 +3,7 @@ import {useCallback, useMemo} from 'react';
 import {type GridTrace} from '@/src/analysis/resample';
 import {
   defaultSessionOf,
+  openingLapIds,
   useSession,
   useSessionBand,
   useSessionLaps,
@@ -40,7 +41,7 @@ export type CornerResult =
       /** Laps on: what a strip tap toggles (their order carries no meaning). */
       keyLapIds: string[];
       /** The session's best lap, else the fastest drawn: what Reset keeps. */
-      bestLapId: string | null;
+      openingIds: string[];
       traceLoad: TraceLoad;
       retryTraces: () => void;
     };
@@ -69,6 +70,14 @@ export function useCornerModel(
           )
         : [],
     [laps.data, selection, allComparable, session.data],
+  );
+  // What Reset goes back to: the opening set, as Session and Compare open.
+  const openingIds = useMemo(
+    () =>
+      laps.data && session.data
+        ? openingLapIds(laps.data, defaultSessionOf(session.data))
+        : [],
+    [laps.data, session.data],
   );
   // The laps on: drawn in their own colour and named on the strips.
   const bestLapId = session.data?.bestLapId ?? null;
@@ -170,7 +179,7 @@ export function useCornerModel(
           model,
           lapIds,
           keyLapIds: traceIds,
-          bestLapId: bestLapId ?? ranked[0] ?? null,
+          openingIds,
           traceLoad,
           retryTraces,
         }
@@ -185,6 +194,7 @@ export function useCornerModel(
     lapIds,
     traceIds,
     bestLapId,
+    openingIds,
     ranked,
     selection.hl,
     selection.ref,

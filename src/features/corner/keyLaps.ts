@@ -35,12 +35,14 @@ export function keyLapIds(input: {
 }
 
 /**
- * "Reset": back to the picked Ref (if any) and the best lap, not to whichever
- * lap happens to be first in the list.
+ * "Reset": back to the session's opening set (openingLapIds, the one Session
+ * and Compare open on), with the picked Ref kept in it.
  */
 export function resetLapIds(
   refId: string | null | undefined,
-  bestLapId: string | null,
+  openingIds: string[],
 ): string[] {
-  return [...new Set([refId, bestLapId].filter((id): id is string => !!id))];
+  return refId && !openingIds.includes(refId)
+    ? [refId, ...openingIds]
+    : openingIds;
 }
