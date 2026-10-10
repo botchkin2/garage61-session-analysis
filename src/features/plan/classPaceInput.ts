@@ -48,24 +48,25 @@ export function classPaceInput(input: {
   const key =
     flagged?.classLaps?.player ?? (carClass ? paceClass(carClass) : null);
 
-  // His median: the plan's, over the green laps it reads. Before the fuel rules
-  // are known there is no plan, so the median of his newest sessions' medians
-  // stands in, pooled the way the classes are.
+  // His median: the plan's, over the green laps it reads. With no plan (no fuel
+  // rules) or a plan with no green laps under its rules, the median of his
+  // newest sessions' medians stands in, pooled the way the classes are.
   const recent = combo.sessions.slice(0, HISTORY_SESSIONS);
   const medians = recent.flatMap(s =>
     s.medianTimeS == null ? [] : [s.medianTimeS],
   );
-  const mine = plan
-    ? {
-        medianLapS: plan.medianLapS,
-        laps: plan.greenLaps,
-        sessions: plan.sessions,
-      }
-    : {
-        medianLapS: median(medians),
-        laps: recent.reduce((a, s) => a + s.comparableCount, 0),
-        sessions: medians.length,
-      };
+  const mine =
+    plan?.medianLapS != null
+      ? {
+          medianLapS: plan.medianLapS,
+          laps: plan.greenLaps,
+          sessions: plan.sessions,
+        }
+      : {
+          medianLapS: median(medians),
+          laps: recent.reduce((a, s) => a + s.comparableCount, 0),
+          sessions: medians.length,
+        };
 
   return {
     sessions: pool,

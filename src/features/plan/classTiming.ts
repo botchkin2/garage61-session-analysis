@@ -224,8 +224,14 @@ function pool(
 function srcText(p: Pooled): string {
   const parts = [plural(p.sessions, p.kind), `${thousands(p.laps)} laps`];
   if (p.gap) {
+    // Negative: that end of the class started behind him.
+    const signed = (v: number) => (v < 0 ? `−${-v}` : String(v));
     const [tail, lead] = [Math.round(p.gap.lastS), Math.round(p.gap.firstS)];
-    parts.push(`grid gap ${tail === lead ? tail : `${tail}–${lead}`} s`);
+    parts.push(
+      `grid gap ${
+        tail === lead ? signed(tail) : `${signed(tail)}–${signed(lead)}`
+      } s`,
+    );
   }
   return parts.join(' · ');
 }

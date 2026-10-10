@@ -150,6 +150,21 @@ describe('classPaceInput', () => {
     ).toMatchObject({raceLaps: 31, stopsAfter: [14]});
   });
 
+  it('a plan with no green laps under its rules falls back to his sessions', () => {
+    const sessions = [summary('a', {medianTimeS: 110})];
+    const plan = {
+      medianLapS: null,
+      greenLaps: 0,
+      sessions: 0,
+      raceLaps: 30,
+      stopsAfter: [],
+    };
+    expect(
+      classPaceInput({combo: comboOf(sessions), sessions, plan, chosen: null})
+        .mine,
+    ).toMatchObject({medianLapS: 110, laps: 8, sessions: 1});
+  });
+
   it('without a plan (no fuel rules) his median is the median of his newest sessions', () => {
     const sessions = [
       summary('a', {medianTimeS: 110}),

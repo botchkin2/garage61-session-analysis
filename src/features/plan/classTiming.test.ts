@@ -223,6 +223,17 @@ describe('classTiming', () => {
     );
   });
 
+  it('signs a grid gap whose tail started behind him with a minus', () => {
+    const s = session('race', 98, 110);
+    s.byClass.hypercar!.gap = {firstS: 22, lastS: -16.4};
+    const t = ready(
+      classTiming({sessions: [s], mine, raceLaps: 60, stopsAfter: []}),
+    );
+    expect(row(t, 'hypercar').srcText).toBe(
+      '1 race · 90 laps · grid gap −16–22 s',
+    );
+  });
+
   it('a first catch band inside one lap names that lap once', () => {
     const s = session('race', null, 110);
     // p10 98 s: 98 / 12 = 8.2 laps; p90 98.5 s: 98.5 / 11.5 = 8.6 laps.
