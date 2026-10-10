@@ -343,6 +343,9 @@ export const size = {
   // A window shorter than this and wider than tall is a phone on its side
   // (812x375, 932x430); tablets and desktops start well above it.
   landscapePhoneMaxHeight: 500,
+  // ...and narrower than this: the widest phones in landscape are ~960 pt, so a
+  // short desktop browser window (1440x480) stays desktop.
+  landscapePhoneMaxWidth: 1000,
   maxContent: 1200,
   // Desktop workspace (handoff "Desktop", D1): 44 pt chrome, 280 | centre | 340.
   chromeBar: 44,

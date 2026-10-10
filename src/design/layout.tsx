@@ -1,5 +1,6 @@
 import {createContext, type ReactNode, useContext} from 'react';
 import {useWindowDimensions} from 'react-native';
+import {SafeAreaInsetsContext} from 'react-native-safe-area-context';
 
 import {type LayoutMetrics, layoutMetrics} from './layoutMetrics';
 
@@ -28,5 +29,13 @@ export function ContentInset({
 export function useLayout(): Layout {
   const window = useWindowDimensions();
   const inset = useContext(InsetContext);
-  return layoutMetrics(window.width, window.height, inset);
+  // The context (not the hook) so a tree without a provider reads no insets.
+  const safe = useContext(SafeAreaInsetsContext);
+  return layoutMetrics(
+    window.width,
+    window.height,
+    inset,
+    safe?.left ?? 0,
+    safe?.right ?? 0,
+  );
 }

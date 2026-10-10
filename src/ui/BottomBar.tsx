@@ -23,7 +23,7 @@ export function BottomBar<T extends string>({
   bottomInset: number;
 }) {
   const {color} = useTheme();
-  const {isLandscapePhone} = useLayout();
+  const {isLandscapePhone, sideInset} = useLayout();
   const itemHeight = isLandscapePhone
     ? size.bottomBarLandscape
     : size.bottomBar;
@@ -36,6 +36,7 @@ export function BottomBar<T extends string>({
           backgroundColor: color.surface,
           borderColor: color.lineStrong,
           paddingBottom: bottomInset,
+          paddingHorizontal: sideInset,
         },
       ]}>
       {items.map(item => {
@@ -46,6 +47,11 @@ export function BottomBar<T extends string>({
             accessibilityRole='tab'
             accessibilityState={{selected: on}}
             onPress={() => onSelect(item.key)}
+            // 36 pt drawn, 44 pt to hit.
+            hitSlop={{
+              top: (size.hit - itemHeight) / 2,
+              bottom: (size.hit - itemHeight) / 2,
+            }}
             style={[
               styles.item,
               {height: itemHeight},

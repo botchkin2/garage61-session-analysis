@@ -11,6 +11,8 @@ export type LayoutMetrics = {
   isWide: boolean;
   /** A phone turned on its side: wide but short, so it keeps the phone layouts. */
   isLandscapePhone: boolean;
+  /** Landscape phone: the larger of the left and right safe areas (camera cutout, gesture bar), applied to both sides so content stays centred; else 0. */
+  sideInset: number;
   contentWidth: number;
 };
 
@@ -24,9 +26,14 @@ export function layoutMetrics(
   windowWidth: number,
   windowHeight: number,
   inset: number,
+  safeLeft = 0,
+  safeRight = 0,
 ): LayoutMetrics {
   const isLandscapePhone =
-    windowWidth > windowHeight && windowHeight < size.landscapePhoneMaxHeight;
+    windowWidth > windowHeight &&
+    windowHeight < size.landscapePhoneMaxHeight &&
+    windowWidth < size.landscapePhoneMaxWidth;
+  const sideInset = isLandscapePhone ? Math.max(safeLeft, safeRight) : 0;
   // Breakpoints follow the window, so the desktop workspace does not drop to
   // the tablet layout just because a rail takes 280 pt.
   const isDesktop = !isLandscapePhone && windowWidth >= size.desktopBreakpoint;
@@ -36,7 +43,7 @@ export function layoutMetrics(
   // with a negative width logs an error.
   const contentWidth = Math.max(
     0,
-    Math.min(width, size.maxContent) - size.gutter * 2,
+    Math.min(width - sideInset * 2, size.maxContent) - size.gutter * 2,
   );
   return {
     width,
@@ -44,6 +51,7 @@ export function layoutMetrics(
     isDesktop,
     isWide,
     isLandscapePhone,
+    sideInset,
     contentWidth,
   };
 }

@@ -67,6 +67,17 @@ const PHONE_H: ZoomHeights = {
   steering: 40,
   line: 0,
 };
+// Landscape phone: 375 pt of height, so the speed trace is the first screen's
+// chart and the pedals are tall enough to read, not 52 pt ribbons.
+const LANDSCAPE_H: ZoomHeights = {
+  speed: 150,
+  brake: 90,
+  throttle: 90,
+  gear: 40,
+  delta: 0,
+  steering: 60,
+  line: 0,
+};
 // Desktop: the whole snapshot (delta, speed, brake, throttle, steering, line)
 // has to sit in a scrolling column, so the pedals are shorter than before.
 const DESK_H: ZoomHeights = {
@@ -475,7 +486,11 @@ function CornerView({
   const tracesW = layout.isWide
     ? layout.width - left.width - PANEL_DIVIDER_W - 2 * space.xl
     : layout.contentWidth;
-  const h = layout.isWide ? DESK_H : PHONE_H;
+  const h = layout.isWide
+    ? DESK_H
+    : layout.isLandscapePhone
+    ? LANDSCAPE_H
+    : PHONE_H;
   const traces = (
     <ZoomTraces
       model={model}
@@ -540,26 +555,25 @@ function CornerView({
     );
   // Phone: the Compare link and the corner chips stay pinned, so stepping is
   // in reach wherever the page is scrolled.
-  // On a phone turned on its side the pinned rows would take most of the 375 pt,
-  // so they scroll with the page instead.
-  const pinnedRows = (
-    <>
-      {navRow}
-      {seekChips}
-      {partsRow}
-    </>
-  );
+  // On a phone turned on its side only the corner chips stay pinned (stepping
+  // stays in reach); the Compare link and Parts scroll, or they would take most
+  // of the 375 pt.
+  const landscape = layout.isLandscapePhone;
   return (
     <View style={[styles.screen, {backgroundColor: color.bg}]}>
-      {layout.isLandscapePhone ? null : (
-        <View
-          style={[
-            styles.pinned,
-            {backgroundColor: color.bg, paddingTop: top.paddingTop},
-          ]}>
-          {pinnedRows}
-        </View>
-      )}
+      <View
+        style={[
+          styles.pinned,
+          {
+            backgroundColor: color.bg,
+            paddingTop: landscape ? insets.top : top.paddingTop,
+            paddingHorizontal: space.xl + layout.sideInset,
+          },
+        ]}>
+        {landscape ? null : navRow}
+        {seekChips}
+        {landscape ? null : partsRow}
+      </View>
       <ScrollView
         style={styles.flex}
         contentContainerStyle={[
@@ -569,8 +583,11 @@ function CornerView({
           // strips sized to it fit instead of overflowing past the gutter.
           {width: layout.contentWidth + 2 * space.xl, alignSelf: 'center'},
         ]}>
-        {layout.isLandscapePhone ? (
-          <View style={{paddingTop: insets.top}}>{pinnedRows}</View>
+        {landscape ? (
+          <>
+            {navRow}
+            {partsRow}
+          </>
         ) : null}
         {titleBlock}
         {body}

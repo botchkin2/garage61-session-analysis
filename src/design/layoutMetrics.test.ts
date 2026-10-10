@@ -24,6 +24,21 @@ describe('layoutMetrics', () => {
     });
   });
 
+  it('a short desktop browser window stays desktop', () => {
+    const m = layoutMetrics(1440, 480, 0);
+    expect(m.isLandscapePhone).toBe(false);
+    expect(m.isDesktop).toBe(true);
+    expect(m.isWide).toBe(true);
+  });
+
+  it('landscape phone keeps the larger side inset on both sides', () => {
+    const m = layoutMetrics(812, 375, 0, 47, 0);
+    expect(m.sideInset).toBe(47);
+    expect(m.contentWidth).toBe(812 - 94 - 32);
+    expect(layoutMetrics(375, 812, 0, 0, 0).sideInset).toBe(0);
+    expect(layoutMetrics(1440, 900, 0, 47, 47).sideInset).toBe(0);
+  });
+
   it('large phone landscape 932x430 is past 900 wide but still a phone', () => {
     const m = layoutMetrics(932, 430, 0);
     expect(m.isLandscapePhone).toBe(true);

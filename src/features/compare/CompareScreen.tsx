@@ -96,8 +96,9 @@ const DESKTOP_MAP_H = 220;
 const DESKTOP_CHART_SCALE = 1.4;
 const ONE_CHART_H = 330;
 // Landscape phone: the one chart takes what the window leaves under the charts
-// bar, one-row transport and bottom bar, never less than this.
-const ONE_CHART_LANDSCAPE_CHROME = 150;
+// bar and chart tabs, above the one-row transport and bottom bar, never less
+// than this.
+const ONE_CHART_LANDSCAPE_CHROME = 225;
 const ONE_CHART_LANDSCAPE_MIN_H = 140;
 // The chip's right 44 pt removes the lap (apex, thread 27 #867): the glyph is
 // ~8 wide with the chip's 8 pt padding on the right, so the rest grows left.
@@ -604,7 +605,7 @@ function CompareView({
   const oneChartH = layout.isLandscapePhone
     ? Math.max(
         ONE_CHART_LANDSCAPE_MIN_H,
-        layout.height - ONE_CHART_LANDSCAPE_CHROME,
+        layout.height - insets.top - ONE_CHART_LANDSCAPE_CHROME,
       )
     : ONE_CHART_H;
   const focused = Math.min(prefs.focused, model.charts.length - 1);
@@ -864,18 +865,26 @@ function CompareView({
         {editor}
       </View>
     );
+  // Landscape phone: the traces come first, so a turned phone opens on the
+  // chart, and the header, reference and lap chips follow below it.
+  const landscape = layout.isLandscapePhone;
+  const chrome = (
+    <>
+      {header}
+      {reference}
+      {referenceHint}
+      {chips}
+    </>
+  );
   return (
     <View style={[styles.screen, {backgroundColor: color.bg}]}>
       <ScrollView
         contentContainerStyle={[
           styles.col,
-          top,
+          landscape ? {paddingTop: insets.top} : top,
           {width: layout.contentWidth, alignSelf: 'center'},
         ]}>
-        {header}
-        {reference}
-        {referenceHint}
-        {chips}
+        {landscape ? null : chrome}
         {/* The plot ends and the Follow map starts on the next pixel, so the
             eye moves from the trace to the car without crossing anything
             (round 5, item 6). */}
@@ -886,8 +895,15 @@ function CompareView({
         {listField != null ? radarPanel : null}
         {position}
         {grid}
+        {landscape ? chrome : null}
       </ScrollView>
-      <View style={{paddingBottom: insets.bottom}}>{transport}</View>
+      <View
+        style={{
+          paddingBottom: insets.bottom,
+          paddingHorizontal: layout.sideInset,
+        }}>
+        {transport}
+      </View>
       {editor}
     </View>
   );
