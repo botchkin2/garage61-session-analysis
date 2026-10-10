@@ -1,6 +1,7 @@
 import {useMemo} from 'react';
 
 import type {StripLap} from './lapStrip';
+import {lapSlots} from '@/src/analysis/lapSlots';
 import type {RaceFacts} from '@/src/analysis/fuelPlan';
 import {
   type SectionMode,
@@ -45,11 +46,14 @@ import {
 
 // Session screen view model (handoff §2). buildSessionModel is pure: session,
 // laps and the URL selection in, everything the screen draws out. Colors are
-// not decided here; `selIndex` (0 = reference) picks the lap color.
+// not decided here; `selIndex` (analysis/lapSlots.ts: 0 only for a picked Ref,
+// the rest by lap number from 1, as in Compare) picks the lap color.
 
 export type Selection = {
-  /** Lap ids in selection order; the first is the reference. */
+  /** Checked lap ids; their order carries no meaning. */
   laps: string[];
+  /** The Ref lap when one is picked; absent, the checked laps are measured against their own median. */
+  ref?: string | null;
   /** The highlighted (tapped) lap. */
   hl: string | null;
 };
@@ -388,10 +392,11 @@ export function buildSessionModel(
   sectionMode: SectionMode = 'turns',
 ): SessionScreenModel {
   const median = session.medianTimeS;
-  const selIndexOf = (id: string) => {
-    const i = selection.laps.indexOf(id);
-    return i < 0 ? null : i;
-  };
+  const checked = selection.laps
+    .map(id => laps.find(l => l.id === id))
+    .filter((l): l is Lap => l != null);
+  const slotOf = lapSlots(checked, selection.ref ?? null);
+  const selIndexOf = (id: string) => slotOf.get(id) ?? null;
   const car = carLabel(session.car);
   const started = new Date(session.startedAt);
 
@@ -517,15 +522,16 @@ export function buildSessionModel(
     action: selIndexOf(hlLap.id) != null ? 'remove' : 'add',
   };
 
-  const selected = selection.laps
-    .map(id => laps.find(l => l.id === id))
-    .filter((l): l is Lap => l != null);
+  const selected = checked;
   const stints = stintPicks(rows, selection.laps);
   // The tray stays while there are stints to pick, even with nothing selected.
   const tray: TrayModel | null =
     selected.length || stints.length
       ? {
-          laps: selected.map((l, i) => ({lapId: l.id, selIndex: i})),
+          laps: selected.map(l => ({
+            lapId: l.id,
+            selIndex: slotOf.get(l.id) as number,
+          })),
           count: selected.length,
           label:
             selected.length === 0

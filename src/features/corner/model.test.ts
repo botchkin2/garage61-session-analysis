@@ -479,12 +479,61 @@ describe('strips at 7+ laps', () => {
   });
 });
 
+describe('colour slots and the default highlight, by meaning', () => {
+  const withKeys = (keyLapIds: string[], refId: string | null, hl: string | null = null) =>
+    buildCornerModel({
+      session,
+      laps,
+      map,
+      band: null,
+      traces: new Map(),
+      lapIds: ['c', 'a', 'b'],
+      keyLapIds,
+      hl,
+      refId,
+      corner: 3,
+    })!;
+  const slots = (m: ReturnType<typeof withKeys>) =>
+    Object.fromEntries(m.rows.map(r => [r.label, r.onIndex]));
+
+  it('slot 0 belongs to the Ref lap only; the rest follow in lap-number order from 1', () => {
+    expect(slots(withKeys(['c', 'a', 'b'], 'c'))).toEqual({L1: 1, L2: 2, L3: 0});
+    expect(slots(withKeys(['b', 'c', 'a'], 'a'))).toEqual({L1: 0, L2: 1, L3: 2});
+  });
+
+  it('without a Ref nobody is slot 0, whichever lap was ticked first', () => {
+    const a = slots(withKeys(['c', 'a', 'b'], null));
+    const b = slots(withKeys(['a', 'b', 'c'], null));
+    expect(a).toEqual({L1: 1, L2: 2, L3: 3});
+    expect(b).toEqual(a);
+  });
+
+  it('a lap that is not on has no slot', () => {
+    expect(slots(withKeys(['a'], null))).toEqual({L1: 1, L2: null, L3: null});
+  });
+
+  it('with none highlighted, the best other lap is, not the second in the list', () => {
+    // L3 (c) is the fastest of the three; L1 (a) is the Ref: the highlight is c.
+    expect(withKeys(['c', 'a', 'b'], 'a').rows.find(r => r.highlighted)?.lapId).toBe('c');
+  });
+});
+
 describe('lap choice', () => {
-  it('all comparable keeps the reference first and skips excluded laps', () => {
+  it('all comparable is every comparable lap in lap order, whatever order they were ticked in, and skips excluded laps', () => {
     expect(cornerLapIds(laps, {laps: ['c'], hl: null}, true)).toEqual([
-      'c',
       'a',
       'b',
+      'c',
+    ]);
+    expect(cornerLapIds(laps, {laps: ['c', 'a'], hl: null}, true)).toEqual(
+      cornerLapIds(laps, {laps: ['a', 'c'], hl: null}, true),
+    );
+    // A ticked lap that is not comparable stays in the list.
+    expect(cornerLapIds(laps, {laps: ['x'], hl: null}, true)).toEqual([
+      'a',
+      'b',
+      'c',
+      'x',
     ]);
     expect(cornerLapIds(laps, {laps: ['c', 'x'], hl: null}, false)).toEqual([
       'c',
@@ -499,10 +548,10 @@ describe('lap choice', () => {
     sessionType: 'R',
   });
 
-  it('with nothing selected, the best lap is the reference', () => {
+  it('with nothing selected, every comparable lap in lap order: no lap is first because it is best', () => {
     expect(
       cornerLapIds(laps, {laps: [], hl: null}, true, sessionOf('b')),
-    ).toEqual(['b', 'a', 'c']);
+    ).toEqual(['a', 'b', 'c']);
   });
 
   it('with nothing selected and all-comparable off, falls back to best + next fastest', () => {

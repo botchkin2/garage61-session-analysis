@@ -40,7 +40,7 @@ src/
 
 ## State
 
-- **The URL is the only source of truth for selection:** build links with `src/nav/routes.ts`, never by hand: session, laps, reference (first in `laps`), highlight, corner, cursor and window.
+- **The URL is the only source of truth for selection:** build links with `src/nav/routes.ts`, never by hand: session, laps, reference (`ref`, only when the user picks one; `laps` order carries no meaning), highlight, corner, cursor and window.
 - **Server data** comes only through React Query hooks in `data/`.
 - **Zustand** holds persisted preferences only.
 
