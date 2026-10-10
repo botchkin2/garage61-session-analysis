@@ -37,8 +37,10 @@ export type CornerResult =
       state: 'ready';
       model: CornerModel;
       lapIds: string[];
-      /** Laps on, reference first: what a strip tap toggles. */
+      /** Laps on: what a strip tap toggles (their order carries no meaning). */
       keyLapIds: string[];
+      /** The session's best lap, else the fastest drawn: what Reset keeps. */
+      bestLapId: string | null;
       traceLoad: TraceLoad;
       retryTraces: () => void;
     };
@@ -70,6 +72,15 @@ export function useCornerModel(
   );
   // The laps on: drawn in their own colour and named on the strips.
   const bestLapId = session.data?.bestLapId ?? null;
+  // The drawn laps, fastest first: "the best" and "the next" come from here.
+  const ranked = useMemo(
+    () =>
+      (laps.data ?? [])
+        .filter(l => lapIds.includes(l.id) && l.timeS != null)
+        .sort((a, b) => (a.timeS as number) - (b.timeS as number))
+        .map(l => l.id),
+    [laps.data, lapIds],
+  );
   const traceIds = useMemo(
     () =>
       keyLapsOf({
@@ -77,9 +88,10 @@ export function useCornerModel(
         selected: selection.laps,
         hl: selection.hl,
         bestLapId,
+        ranked,
         individual: lapIds.length < 7,
       }),
-    [lapIds, selection.laps, selection.hl, bestLapId],
+    [lapIds, selection.laps, selection.hl, bestLapId, ranked],
   );
   // Every lap comes from the corner's slice file (one small fetch), so every
   // comparable lap draws, not only the laps on. A session the uploader has
@@ -158,6 +170,7 @@ export function useCornerModel(
           model,
           lapIds,
           keyLapIds: traceIds,
+          bestLapId: bestLapId ?? ranked[0] ?? null,
           traceLoad,
           retryTraces,
         }
@@ -171,7 +184,10 @@ export function useCornerModel(
     traces,
     lapIds,
     traceIds,
+    bestLapId,
+    ranked,
     selection.hl,
+    selection.ref,
     corner,
     whole,
     traceLoad,

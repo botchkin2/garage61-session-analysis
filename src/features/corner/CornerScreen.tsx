@@ -51,6 +51,7 @@ import {
   sortRows,
 } from './model';
 import {type CornerBlock, cornerLayout} from './layout';
+import {resetLapIds} from './keyLaps';
 import {useCornerModel} from './useCornerModel';
 import {SectionWindowCard} from './SectionWindowCard';
 import {ZoomTraces, type ZoomHeights} from './ZoomTraces';
@@ -152,6 +153,7 @@ export function CornerScreen({
       model={result.model}
       lapIds={result.lapIds}
       keyLapIds={result.keyLapIds}
+      bestLapId={result.bestLapId}
       traceLoad={result.traceLoad}
       onRetryTraces={result.retryTraces}
       selection={selection}
@@ -167,6 +169,7 @@ function CornerView({
   model,
   lapIds,
   keyLapIds,
+  bestLapId,
   traceLoad,
   onRetryTraces,
   selection,
@@ -178,6 +181,7 @@ function CornerView({
   model: CornerModel;
   lapIds: string[];
   keyLapIds: string[];
+  bestLapId: string | null;
   traceLoad: TraceLoad;
   onRetryTraces: () => void;
   selection: CornerSelection;
@@ -364,12 +368,12 @@ function CornerView({
           {canToggle && selection.laps.length >= 2 ? (
             <View style={styles.row}>
               <Chip
-                label='Reset to reference + best'
+                label='Reset to best'
                 onPress={() => {
                   setNotice(null);
                   onSelectionChange({
                     ...selection,
-                    laps: selection.laps.slice(0, 1),
+                    laps: resetLapIds(selection.ref, bestLapId),
                   });
                 }}
               />

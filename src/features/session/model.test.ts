@@ -367,3 +367,37 @@ describe('sectionTable', () => {
     expect(table.footer[0].cells).toEqual(['10.20']);
   });
 });
+
+describe('lap colour slots follow the meaning, not the order laps were checked in', () => {
+  const ids = laps.slice(0, 22).map(l => l.id);
+  const slotsOf = (checked: string[], ref: string | null) => {
+    const m = buildSessionModel(session, laps, {laps: checked, ref, hl: null});
+    return Object.fromEntries(
+      m.rows
+        .filter((r): r is LapRowModel => r.kind === 'lap')
+        .filter(r => r.selIndex != null)
+        .map(r => [r.label, r.selIndex]),
+    );
+  };
+
+  it('slot 0 is the Ref lap only; the others follow by lap number from 1', () => {
+    expect(slotsOf([ids[8], ids[2], ids[5]], ids[5])).toEqual({
+      L3: 1,
+      L6: 0,
+      L9: 2,
+    });
+  });
+
+  it('with no Ref nobody is slot 0, and the order checked does not matter', () => {
+    const a = slotsOf([ids[8], ids[2], ids[5]], null);
+    expect(a).toEqual({L3: 1, L6: 2, L9: 3});
+    expect(slotsOf([ids[2], ids[5], ids[8]], null)).toEqual(a);
+    const tray = buildSessionModel(session, laps, {
+      laps: [ids[8], ids[2]],
+      ref: null,
+      hl: null,
+    }).tray;
+    expect(tray?.laps.map(l => l.selIndex).sort()).toEqual([1, 2]);
+  });
+});
+

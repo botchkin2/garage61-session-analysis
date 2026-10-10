@@ -1,4 +1,5 @@
 import {toLocalMetres} from '@/src/analysis/geo';
+import {bestLapOf, lapSlots} from '@/src/analysis/lapSlots';
 import {medianBasisOf} from '@/src/analysis/medianBasis';
 import {
   MAP_AFTER_M,
@@ -228,10 +229,12 @@ export function cornerLapIds(
       ? openingLapIds(laps, session)
       : defaultLapIds(laps, bestLapId);
   }
-  // With nothing selected, the session's best lap is the reference.
-  const ref = selection.laps[0] ?? bestLapId ?? undefined;
-  const rest = laps.filter(l => l.comparable && l.id !== ref).map(l => l.id);
-  return ref ? [ref, ...rest] : rest;
+  // Every comparable lap, plus any ticked lap that is not, in lap order: the
+  // order the laps were ticked in carries no meaning and no lap is the
+  // reference unless Ref is picked.
+  return laps
+    .filter(l => l.comparable || selection.laps.includes(l.id))
+    .map(l => l.id);
 }
 
 /**
@@ -325,7 +328,6 @@ export function buildCornerModel(input: {
   whole?: boolean;
 }): CornerModel | null {
   const {laps, map, band, traces, lapIds, corner} = input;
-  const onIndexOf = new Map(input.keyLapIds.map((id, i) => [id, i]));
   const all = trackCorners(map);
   const at = all.findIndex(c => c.n === corner);
   if (at < 0) return null;
@@ -349,8 +351,17 @@ export function buildCornerModel(input: {
       ? selected.find(l => l.id === input.refId)
       : undefined;
   const mode = lapMode(selected.length);
+  // The colour slot of a lap that is on: the Ref lap 0, the rest in lap-number
+  // order from 1 (analysis/lapSlots.ts), the same as Compare.
+  const onIndexOf = lapSlots(
+    selected.filter(l => input.keyLapIds.includes(l.id)),
+    ref?.id ?? null,
+  );
+  // With none highlighted, the set's best lap other than the Ref.
   const hl =
-    input.hl && lapIds.includes(input.hl) ? input.hl : selected[1]?.id ?? null;
+    input.hl && lapIds.includes(input.hl)
+      ? input.hl
+      : bestLapOf(selected.filter(l => l.id !== ref?.id))?.id ?? null;
 
   // One entry part for the whole set, so a column never mixes apexes.
   const entryN = whole ? entryPartOf(selected, all, sec) : null;
